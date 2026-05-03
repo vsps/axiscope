@@ -57,21 +57,30 @@ def load_svg(
     raw_paths: list[QPainterPath] = []
     _walk_svg(root, raw_paths)
 
-    # Uniform scale to fit paper with 5% margin
+    # Compute tight bounding-box of the actual drawing content
+    content_bbox = QRectF()
+    for p in raw_paths:
+        if not p.isEmpty():
+            content_bbox = content_bbox.united(p.boundingRect())
+    if content_bbox.isEmpty():
+        content_bbox = viewbox
+
+    # Uniform scale to fit the *content* on paper with 5% margin
     paper_w = paper.display_width
     paper_h = paper.display_height
     margin = 0.05
     avail_w = paper_w * (1 - 2 * margin)
     avail_h = paper_h * (1 - 2 * margin)
 
-    if viewbox.width() > 0 and viewbox.height() > 0:
-        scale = min(avail_w / viewbox.width(), avail_h / viewbox.height())
+    bw, bh = content_bbox.width(), content_bbox.height()
+    if bw > 0 and bh > 0:
+        scale = min(avail_w / bw, avail_h / bh)
     else:
         scale = 1.0
 
     xform = QTransform()
     xform.scale(scale, scale)
-    xform.translate(-viewbox.center().x(), -viewbox.center().y())
+    xform.translate(-content_bbox.center().x(), -content_bbox.center().y())
 
     pen_mm = QPen(Qt.black, stroke_mm)
     pen_mm.setCosmetic(False)

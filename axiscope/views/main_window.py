@@ -34,18 +34,15 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 640)
         self.resize(1280, 860)
 
-        # -- Models ----------------------------------------------------
         self._device = DeviceModel()
         self._settings = SettingsModel()
 
-        # -- Views -----------------------------------------------------
         central = QWidget()
         self.setCentralWidget(central)
         root_layout = QVBoxLayout(central)
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        # Toolbar
         self._toolbar = Toolbar()
         self._toolbar.paper_changed.connect(self._on_paper_changed)
         self._toolbar.load_svg_clicked.connect(self._on_load_svg)
@@ -53,44 +50,36 @@ class MainWindow(QMainWindow):
         self._toolbar.settings_clicked.connect(self._on_settings)
         root_layout.addWidget(self._toolbar)
 
-        # SVG controls (hidden until SVG loaded)
         self._svg_controls = self._build_svg_controls()
         root_layout.addWidget(self._svg_controls)
 
-        # Tool controls (hidden until tool selected)
         self._tool_controls = ToolControlsPanel()
         self._tool_controls.params_changed.connect(self._on_tool_params)
         root_layout.addWidget(self._tool_controls)
 
-        # Canvas
         self._scene = QGraphicsScene()
         self._canvas = CanvasView(self._scene)
         root_layout.addWidget(self._canvas, stretch=1)
 
-        # Status bar
         self._status_bar = StatusBar()
         self._status_bar.toggle_motors_clicked.connect(self._on_toggle_motors)
         self._status_bar.toggle_pen_clicked.connect(self._on_toggle_pen)
         self._status_bar.plot_clicked.connect(self._on_plot)
         root_layout.addWidget(self._status_bar)
 
-        # -- Device bindings -------------------------------------------
         self._device.connected_changed.connect(self._on_device_connection)
         self._device.info_changed.connect(self._on_device_info)
 
-        # -- Controller ------------------------------------------------
         self._plot_ctrl = PlotController(self._device, self._settings)
         self._plot_ctrl.plot_started.connect(self._on_plot_started)
         self._plot_ctrl.plot_finished.connect(self._on_plot_finished)
 
-        # -- Tool registry ---------------------------------------------
         self._tools: dict[str, BaseTool] = {
             "Polar Oscilloscope": OscilloscopeTool(),
         }
         self._active_tool: BaseTool | None = None
         self._svg_paths: list[QPainterPath] = []
 
-        # Init
         self._on_paper_changed("A1")
         self._setup_shortcuts()
         self._apply_theme()
@@ -113,17 +102,14 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
-
         paper = PaperSize.from_name(self._toolbar.current_paper())
         stroke_mm = self._settings.data.stroke_width
-
         try:
             paths = load_svg(path, paper, stroke_mm)
         except Exception as exc:
             self._status_bar.set_status_text(f"SVG error: {exc}")
             return
 
-        # Switch to SVG mode
         self._toolbar._tool_combo.blockSignals(True)
         self._toolbar._tool_combo.setCurrentText("None")
         self._toolbar._tool_combo.blockSignals(False)
@@ -159,7 +145,7 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     # =================================================================
-    # Tool preview (multi-layer)
+    # Tool preview
     # =================================================================
 
     def _on_tool_params(self, params: dict) -> None:  # noqa: ARG002
@@ -170,15 +156,13 @@ class MainWindow(QMainWindow):
             return
         paper = PaperSize.from_name(self._toolbar.current_paper())
         stroke_mm = self._settings.data.stroke_width
-        flat = self._tool_controls.current_params()
-        layers = ToolControlsPanel.split_layers(flat)
+        params = self._tool_controls.current_params()
 
         self._canvas.clear_preview()
         try:
-            for lp in layers:
-                paths = self._active_tool.generate_paths(lp, paper, stroke_mm)
-                for p in paths:
-                    self._canvas.add_preview_path(p)
+            paths = self._active_tool.generate_paths(params, paper, stroke_mm)
+            for p in paths:
+                self._canvas.add_preview_path(p)
         except Exception as exc:
             self._status_bar.set_status_text(f"Tool error: {exc}")
 
@@ -246,7 +230,7 @@ class MainWindow(QMainWindow):
         dy = self._svg_off_y.value()
         xform = QTransform()
         xform.scale(scale, scale)
-        xform.translate(dx / scale, dy / scale)
+        xform.translate(dx, dy)
         self._canvas.clear_preview()
         for p in self._svg_paths:
             self._canvas.add_preview_path(xform.map(p))
@@ -327,7 +311,9 @@ class MainWindow(QMainWindow):
 
     def _on_device_connection(self, connected: bool) -> None:
         if connected:
-            self._status_bar.set_connected(True, self._device.port, self._device.model)
+            self._status_bar.set_connected(
+                True, self._device.port, self._device.model
+            )
         else:
             self._status_bar.set_connected(False)
 

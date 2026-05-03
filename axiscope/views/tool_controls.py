@@ -21,11 +21,13 @@ MAX_LAYERS = 5
 
 class ToolControlsPanel(QWidget):
     """Vertical stack of control rows — one per layer — with +/- buttons
-    to add/remove layers.  Each row has spinboxes/combos auto-generated
-    from the tool's ``ControlDef`` list.
+    to add/remove layers.  Rows are auto-generated from the tool's
+    ``ControlDef`` list.
 
-    Emits ``params_changed(dict)`` whenever any value changes.  When
-    multiple layers exist, keys are suffixed with ``_0``, ``_1`` etc.
+    Layer 0 uses ``tool.controls`` (master).  Layers 1..4 use
+    ``tool.modulator_controls`` (subset — e.g. no duration/samples).
+
+    Emits ``params_changed(dict)`` whenever any value changes.
     """
 
     params_changed = Signal(dict)
@@ -38,7 +40,7 @@ class ToolControlsPanel(QWidget):
         self._outer.setContentsMargins(8, 4, 8, 4)
         self._outer.setSpacing(2)
 
-        # Header row with label + add/remove buttons
+        # Header
         header = QHBoxLayout()
         self._title_label = QLabel("")
         self._title_label.setStyleSheet("background: transparent; font-weight: bold;")
@@ -56,7 +58,6 @@ class ToolControlsPanel(QWidget):
         header.addWidget(self._remove_btn)
         self._outer.addLayout(header)
 
-        # Rows container
         self._rows_layout = QVBoxLayout()
         self._rows_layout.setSpacing(2)
         self._outer.addLayout(self._rows_layout)
@@ -67,25 +68,23 @@ class ToolControlsPanel(QWidget):
     # -----------------------------------------------------------------
     def set_tool(self, tool: BaseTool | None) -> None:
         self._clear_rows()
-
         if tool is None:
             self._tool = None
             self.setVisible(False)
             return
-
         self._tool = tool
         self._title_label.setText(tool.name)
-        self._add_layer()  # start with one layer
+        self._add_layer()
         self._update_buttons()
         self.setVisible(True)
-        self.setMaximumHeight(200 * MAX_LAYERS + 40)
+        self.setMaximumHeight(220 * MAX_LAYERS + 40)
         self._emit()
 
     # -----------------------------------------------------------------
     def _add_layer(self) -> None:
         if len(self._rows) >= MAX_LAYERS or self._tool is None:
             return
-        self._add_row(self._tool.get_defaults())
+        self._add_row()
         self._update_buttons()
         self._emit()
 
@@ -102,14 +101,17 @@ class ToolControlsPanel(QWidget):
         n = len(self._rows)
         self._add_btn.setEnabled(n < MAX_LAYERS)
         self._remove_btn.setEnabled(n > 1)
-        self._title_label.setText(
-            f"{self._tool.name if self._tool else ''}  [{n} layer{'s' if n > 1 else ''}]"
-        )
+        label = self._tool.name if self._tool else ""
+        self._title_label.setText(f"{label}  [{n} layer{'s' if n > 1 else ''}]")
 
     # -----------------------------------------------------------------
-    def _add_row(self, defaults: dict[str, float]) -> None:
+    def _add_row(self) -> None:
         idx = len(self._rows)
         row_widgets: dict[str, QWidget] = {}
+
+        # Master controls for layer 0, modulator controls for 1+
+        ctrls = self._tool.controls if idx == 0 else self._tool.modulator_controls
+        defaults = {c.key: c.default for c in ctrls}
 
         row_layout = QHBoxLayout()
         row_layout.setContentsMargins(0, 0, 0, 0)
@@ -120,10 +122,9 @@ class ToolControlsPanel(QWidget):
         lbl.setFixedWidth(18)
         row_layout.addWidget(lbl)
 
-        for ctrl in self._tool.controls:
-            row_layout.addWidget(
-                QLabel(ctrl.label[:8]) if len(ctrl.label) > 8 else QLabel(ctrl.label)
-            )
+        for ctrl in ctrls:
+            short = ctrl.label[:8]
+            row_layout.addWidget(QLabel(short))
 
             if ctrl.kind == "choice":
                 w: QComboBox | QDoubleSpinBox | QSpinBox = QComboBox()
@@ -136,7 +137,7 @@ class ToolControlsPanel(QWidget):
                 w.setSingleStep(int(ctrl.step))
                 w.setValue(int(defaults.get(ctrl.key, 0)))
                 w.setSuffix(ctrl.suffix)
-                w.setFixedWidth(70)
+                w.setFixedWidth(140)
                 w.valueChanged.connect(lambda _v: self._emit())
             else:
                 w = QDoubleSpinBox()
@@ -145,7 +146,7 @@ class ToolControlsPanel(QWidget):
                 w.setDecimals(ctrl.decimals)
                 w.setValue(defaults.get(ctrl.key, 0.0))
                 w.setSuffix(ctrl.suffix)
-                w.setFixedWidth(80)
+                w.setFixedWidth(160)
                 w.valueChanged.connect(lambda _v: self._emit())
 
             row_widgets[ctrl.key] = w
@@ -160,7 +161,6 @@ class ToolControlsPanel(QWidget):
             for w in row.values():
                 w.deleteLater()
         self._rows.clear()
-        # Clear row layouts
         while self._rows_layout.count():
             item = self._rows_layout.takeAt(0)
             if item.layout():
@@ -168,24 +168,18 @@ class ToolControlsPanel(QWidget):
 
     # -----------------------------------------------------------------
     def current_params(self) -> dict[str, float]:
-        """Return per-layer params as a flat dict with ``_0``, ``_1``
-        suffixes.  The tool can call ``split_layers()`` to recover the
-        original per-layer structure."""
         result: dict[str, float] = {}
         for i, row in enumerate(self._rows):
             for key, w in row.items():
-                suffix = f"_{i}"
                 if isinstance(w, QComboBox):
-                    result[key + suffix] = float(w.currentIndex())
+                    result[f"{key}_{i}"] = float(w.currentIndex())
                 else:
-                    result[key + suffix] = w.value()
-            result[f"_layer_count"] = float(len(self._rows))
+                    result[f"{key}_{i}"] = w.value()
+        result["_layer_count"] = float(len(self._rows))
         return result
 
     @staticmethod
     def split_layers(params: dict[str, float]) -> list[dict[str, float]]:
-        """Convert a flat params dict (from ``current_params()``) back
-        into a list of per-layer dicts."""
         count = int(params.get("_layer_count", 1))
         layers: list[dict[str, float]] = []
         for i in range(count):

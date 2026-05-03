@@ -42,8 +42,14 @@ class BaseTool(ABC):
     @property
     @abstractmethod
     def controls(self) -> list[ControlDef]:
-        """Return the parameter definitions for this tool."""
+        """Return the parameter definitions for this tool (master layer)."""
         ...
+
+    @property
+    def modulator_controls(self) -> list[ControlDef]:
+        """Controls for additional layers.  Defaults to ``controls``.
+        Override to show a subset (e.g. omit duration/samples)."""
+        return self.controls
 
     @abstractmethod
     def generate_paths(
