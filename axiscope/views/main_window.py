@@ -321,6 +321,7 @@ class MainWindow(QMainWindow):
             return
         self._device.nudge(dx, dy)
         self._status_bar.set_position(self._device.x, self._device.y)
+        self._status_bar.set_pen_state(self._device.pen_raised)
 
     def _on_escape(self) -> None:
         if self._active_tool is not None:
@@ -454,8 +455,11 @@ class MainWindow(QMainWindow):
     def _on_device_connection(self, connected: bool) -> None:
         if connected:
             self._status_bar.set_connected(True, self._device.port, self._device.model)
+            self._status_bar.set_motor_state(False)
+            self._status_bar.set_pen_state(True)
         else:
             self._status_bar.set_connected(False)
+            self._status_bar.set_motor_state(False)
 
     def _on_device_info(self) -> None:
         self._status_bar.set_connected(

@@ -1,17 +1,17 @@
-"""AxiDraw device — wraps the AxiDraw Python API."""
+"""AxiDraw device — wraps the pyaxidraw interactive API."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import serial.tools.list_ports
-from axidrawinternal.axidraw import AxiDraw
+from pyaxidraw import axidraw as _pyaxidraw
 from PySide6.QtCore import QObject, Signal
 
 EBB_VID = 0x04D8
 EBB_PID = 0xFD92
 _EBB_KEYWORDS = ("ubw", "eibotboard", "axidraw", "ebb", "ei bot")
 NUDGE_MM = 6.35  # 0.25 inch
-
-from dataclasses import dataclass
 
 
 @dataclass
@@ -31,7 +31,7 @@ class DeviceModel(QObject):
         super().__init__()
         self._connected = False
         self._info = DeviceInfo()
-        self._ad = AxiDraw()
+        self._ad: _pyaxidraw.AxiDraw | None = None
         self._x: float = 0.0
         self._y: float = 0.0
         self._motor_enabled = False
@@ -96,26 +96,27 @@ class DeviceModel(QObject):
     def connect(self, port: str) -> bool:
         if self._connected:
             self.disconnect()
-        # Force-close any stale handle on this port
+        ad = _pyaxidraw.AxiDraw()
+        ad.interactive()
+        ad.options.units = 2  # millimetres
+        ad.options.port = port
+        ad.options.pen_pos_up = 60
+        ad.options.pen_pos_down = 30
         try:
-            import serial as _ser
-
-            s = _ser.Serial(port=port, baudrate=115200, timeout=0.1)
-            s.close()
-        except Exception:
-            pass
-        self._ad.options.port = port
-        try:
-            self._ad.serial_connect()
+            result = ad.connect()
         except Exception as exc:
-            print(f"[DeviceModel] Connect failed: {exc}")
+            print(f"[DeviceModel] connect failed: {exc}")
+            try:
+                ad.disconnect()
+            except Exception:
+                pass
             return False
-        self._ad.initialize_options()
-        self._ad.options.pen_pos_up = 60
-        self._ad.options.pen_pos_down = 30
-        self._ad.step_scale = 2.0 * self._ad.params.native_res_factor
-        self._ad.speed_pendown = self._ad.options.speed_pendown
-        self._ad.speed_penup = self._ad.options.speed_penup
+        if not result:
+            print("[DeviceModel] connect() returned False")
+            return False
+        # connect() enables motors; disable so user must manually engage
+        ad.usb_command("EM,0,0\r")
+        self._ad = ad
         self._info = DeviceInfo(port=port, model=_guess_model(""))
         self._connected = True
         self._motor_enabled = False
@@ -126,10 +127,12 @@ class DeviceModel(QObject):
         return True
 
     def disconnect(self) -> None:
-        try:
-            self._ad.disconnect()
-        except Exception:
-            pass
+        if self._ad is not None:
+            try:
+                self._ad.disconnect()
+            except Exception:
+                pass
+            self._ad = None
         self._connected = False
         self._motor_enabled = False
         self._info = DeviceInfo()
@@ -137,60 +140,56 @@ class DeviceModel(QObject):
         self.info_changed.emit()
 
     def toggle_motors(self) -> bool:
-        if not self._connected:
+        if not self._connected or self._ad is None:
             return False
         self._motor_enabled = not self._motor_enabled
-        self._ad.options.mode = "manual"
-        self._ad.options.manual_cmd = (
-            "enable_xy" if self._motor_enabled else "disable_xy"
-        )
-        self._ad.manual_command()
+        if self._motor_enabled:
+            self._ad.enable_motors()
+        else:
+            self._ad.usb_command("EM,0,0\r")
         return self._motor_enabled
 
     def toggle_pen(self) -> bool:
-        if not self._connected:
+        if not self._connected or self._ad is None:
             return True
         self._pen_raised = not self._pen_raised
-        self._ad.options.mode = "manual"
-        self._ad.options.manual_cmd = "raise_pen" if self._pen_raised else "lower_pen"
-        self._ad.manual_command()
+        if self._pen_raised:
+            self._ad.penup()
+        else:
+            self._ad.pendown()
         print(f"[DeviceModel] pen={'up' if self._pen_raised else 'down'}")
         return self._pen_raised
 
     def align(self) -> None:
-        if not self._connected:
+        if not self._connected or self._ad is None:
             return
-        self._ad.options.mode = "align"
-        self._ad.setup_command()
+        self._ad.penup()
+        self._ad.usb_command("EM,0,0\r")
         self._motor_enabled = False
         self._pen_raised = True
 
     def home(self) -> None:
-        if not self._connected or not self._motor_enabled:
+        if not self._connected or not self._motor_enabled or self._ad is None:
             return
-        self._ad.options.mode = "plot"
-        self._ad.setup_command()
-        self._ad.go_to_position(0, 0)
-        self._ad.options.mode = "align"
-        self._ad.setup_command()
+        self._ad.moveto(0.0, 0.0)
         self._x, self._y = 0.0, 0.0
+        self._pen_raised = True
 
     def nudge(self, dx_mm: float, dy_mm: float) -> None:
-        if not self._connected or not self._motor_enabled:
+        if not self._connected or not self._motor_enabled or self._ad is None:
             return
-        self._ad.go_to_position(self._x + dx_mm, self._y + dy_mm)
-        self._x += dx_mm
-        self._y += dy_mm
+        target_x = max(0.0, self._x + dx_mm)
+        target_y = max(0.0, self._y + dy_mm)
+        self._ad.moveto(target_x, target_y)  # always pen-up move
+        self._x = target_x
+        self._y = target_y
+        self._pen_raised = True
         print(f"[DeviceModel] nudged to ({self._x:.1f}, {self._y:.1f})")
 
-    def setup_plot_mode(self) -> None:
-        self._ad.options.mode = "plot"
-        self._ad.options.pen_pos_up = 60
-        self._ad.options.pen_pos_down = 30
-        self._ad.setup_command()
-
     def plot_polyline(self, vertices: list[list[float]]) -> None:
-        self._ad.plot_polyline(vertices)
+        """Plot a polyline: moveto first point, pen down, trace, pen up."""
+        if self._ad is not None:
+            self._ad.draw_path(vertices)
 
     def query_position(self) -> tuple[float, float]:
         return self._x, self._y
