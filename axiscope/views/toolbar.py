@@ -60,7 +60,7 @@ class Toolbar(QWidget):
         layout.addWidget(QLabel("Tool:"))
         self._tool_combo = QComboBox()
         self._tool_combo.addItem("None")
-        self._tool_combo.addItem("Polar Oscilloscope")
+        self._tool_combo.addItem("Oscilloscope")
         self._tool_combo.currentTextChanged.connect(self.tool_changed)
         layout.addWidget(self._tool_combo)
 

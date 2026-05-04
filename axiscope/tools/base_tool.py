@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QPainterPath
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
 
 from axiscope.models.paper import PaperSize
 
@@ -65,6 +69,14 @@ class BaseTool(ABC):
         **millimetre** coordinates (centred at origin 0,0).
         """
         ...
+
+    def create_controls_widget(self, parent: QWidget | None = None) -> QWidget | None:
+        """Override to supply a custom controls panel.
+
+        Return ``None`` (the default) to let the framework build a
+        generic panel from ``controls`` / ``modulator_controls``.
+        """
+        return None
 
     def get_defaults(self) -> dict[str, float]:
         """Return {key: default} for every control."""

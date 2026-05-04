@@ -1,13 +1,11 @@
-"""Polar oscilloscope — rose-curve / Lissajous-on-a-circle traces.
+"""Polar oscilloscope — audio-style signal chain wrapped around a circle.
 
-The first (master) layer defines the base signal.  Additional modulator
-layers modulate the master via one of three targets:
+Signal flow:
+  carrier(FM(freq)) → AM modulate → ADSR envelope → fit / scale → polar plot
 
-  * Radius  (AM) — scales the distance from centre (envelope shaping)
-  * Rotation (FM) — warps angular velocity (spiral / twist patterns)
-  * Add     — classic additive signal mixing
-
-Processing order: FM → master radius → AM → Add → fit + scale.
+All frequencies are in *cycles per revolution*.  A 440 Hz carrier completes
+440 oscillations in one 360° rotation.  Audio preview plays back at 1 rev/s
+so these numbers map directly to audible Hz.
 """
 
 from __future__ import annotations
@@ -15,106 +13,161 @@ from __future__ import annotations
 import numpy as np
 from PySide6.QtCore import QPointF
 from PySide6.QtGui import QPainterPath
+from PySide6.QtWidgets import QWidget
 
 from axiscope.models.paper import PaperSize
 from axiscope.tools.base_tool import BaseTool, ControlDef
-from axiscope.views.tool_controls import ToolControlsPanel
 
 
 class OscilloscopeTool(BaseTool):
-    """Polar trace with AM/FM modulation.
+    """Audio-oscilloscope drawing tool.
 
-    Processing chain:
-      1. FM modulators warp the angular parameter theta
-      2. Master layer computes base radius r on the (warped) theta
-      3. AM modulators scale the radius (envelope / ring modulation)
-      4. Add modulators contribute additive signals
-      5. Fit normalisation and final scale are applied
+    Three-line controls layout:
+      Line 1 — Signal:  carrier Hz / wave / FM Hz / FM % / AM Hz / AM %
+      Line 2 — ADSR:    attack % / decay % / sustain % / release %
+      Line 3 — Render:  duration / samples/rev / fit / scale / cx / cy / play
+
+    Processing order:
+      1. FM phase modulation: warp the carrier phase
+      2. Carrier waveform: sine | square | saw
+      3. AM amplitude modulation: scale the carrier by AM oscillator
+      4. ADSR envelope: per-revolution attack-decay-sustain-release
+      5. Fit normalisation + final scale → polar coords
     """
 
-    name = "Polar Oscilloscope"
+    name = "Oscilloscope"
 
+    # -- Controls -------------------------------------------------------
     @property
     def controls(self) -> list[ControlDef]:
-        """Master layer: all controls including duration/samples/center."""
+        """Flat list of every control — used for introspection / defaults.
+
+        The custom ``OscilloscopeControls`` widget lays these out in
+        three labelled rows; this list only needs to be complete and
+        key-unique.
+        """
         return [
+            # ── Line 1: Signal ────────────────────────────────────
             ControlDef(
-                key="waveform",
+                key="carrier_freq",
+                label="Carrier",
+                default=440.0,
+                minimum=20.0,
+                maximum=20000.0,
+                step=10.0,
+                decimals=0,
+                suffix=" Hz",
+            ),
+            ControlDef(
+                key="carrier_wave",
                 label="Wave",
                 default=0,
                 minimum=0,
-                maximum=3,
+                maximum=2,
                 step=1,
                 decimals=0,
                 kind="choice",
-                choices=["|sin|", "sin", "|cos|", "triangle"],
+                choices=["Sine", "Square", "Saw"],
             ),
             ControlDef(
-                key="frequency",
-                label="Freq",
-                default=5.0,
-                minimum=0.5,
-                maximum=50.0,
-                step=0.5,
+                key="fm_freq",
+                label="FM Hz",
+                default=100.0,
+                minimum=0.01,
+                maximum=10000.0,
+                step=10.0,
                 decimals=1,
+                suffix=" Hz",
             ),
             ControlDef(
-                key="amplitude",
-                label="Amp %",
-                default=80.0,
-                minimum=5.0,
-                maximum=95.0,
+                key="fm_amount",
+                label="FM %",
+                default=0.0,
+                minimum=0.0,
+                maximum=100.0,
                 step=1.0,
                 decimals=0,
                 suffix=" %",
             ),
             ControlDef(
-                key="phase",
-                label="Phase",
+                key="am_freq",
+                label="AM Hz",
+                default=10.0,
+                minimum=0.01,
+                maximum=20000.0,
+                step=10.0,
+                decimals=1,
+                suffix=" Hz",
+            ),
+            ControlDef(
+                key="am_amount",
+                label="AM %",
                 default=0.0,
                 minimum=0.0,
-                maximum=360.0,
+                maximum=100.0,
                 step=1.0,
                 decimals=0,
-                suffix="°",
+                suffix=" %",
             ),
+            # ── Line 2: ADSR ──────────────────────────────────────
+            ControlDef(
+                key="attack",
+                label="Attack",
+                default=5.0,
+                minimum=0.0,
+                maximum=50.0,
+                step=1.0,
+                decimals=0,
+                suffix=" %",
+            ),
+            ControlDef(
+                key="decay",
+                label="Decay",
+                default=10.0,
+                minimum=0.0,
+                maximum=50.0,
+                step=1.0,
+                decimals=0,
+                suffix=" %",
+            ),
+            ControlDef(
+                key="sustain",
+                label="Sustain",
+                default=80.0,
+                minimum=0.0,
+                maximum=100.0,
+                step=1.0,
+                decimals=0,
+                suffix=" %",
+            ),
+            ControlDef(
+                key="release",
+                label="Release",
+                default=10.0,
+                minimum=0.0,
+                maximum=50.0,
+                step=1.0,
+                decimals=0,
+                suffix=" %",
+            ),
+            # ── Line 3: Render ────────────────────────────────────
             ControlDef(
                 key="duration",
                 label="Dur",
-                default=1.0,
+                default=3.0,
                 minimum=0.5,
                 maximum=100.0,
-                step=1.0,
+                step=0.5,
                 decimals=1,
                 suffix=" rev",
             ),
             ControlDef(
-                key="center_x",
-                label="CX %",
-                default=50.0,
-                minimum=5.0,
-                maximum=95.0,
-                step=1.0,
-                decimals=0,
-                suffix=" %",
-            ),
-            ControlDef(
-                key="center_y",
-                label="CY %",
-                default=50.0,
-                minimum=5.0,
-                maximum=95.0,
-                step=1.0,
-                decimals=0,
-                suffix=" %",
-            ),
-            ControlDef(
-                key="samples",
-                label="Samples",
-                default=2000,
-                minimum=200,
-                maximum=50000,
-                step=500,
+                key="samples_per_rev",
+                label="Smp/rev",
+                default=20000,
+                minimum=1000,
+                maximum=200000,
+                step=1000,
                 decimals=0,
                 kind="int",
             ),
@@ -139,162 +192,101 @@ class OscilloscopeTool(BaseTool):
                 decimals=0,
                 suffix=" %",
             ),
-        ]
-
-    @property
-    def modulator_controls(self) -> list[ControlDef]:
-        """Modulator layers: waveform/freq/amp/phase plus a Target selector.
-
-        Target choices:
-          - Radius  (AM) — modulates the distance from centre
-          - Rotation (FM) — warps angular velocity for spirals
-          - Add     — simple signal addition (classic summing)
-        """
-        return [
             ControlDef(
-                key="waveform",
-                label="Wave",
-                default=1,
-                minimum=0,
-                maximum=3,
-                step=1,
-                decimals=0,
-                kind="choice",
-                choices=["|sin|", "sin", "|cos|", "triangle"],
-            ),
-            ControlDef(
-                key="frequency",
-                label="Freq",
-                default=3.0,
-                minimum=0.5,
-                maximum=50.0,
-                step=0.5,
-                decimals=1,
-            ),
-            ControlDef(
-                key="amplitude",
-                label="Amp %",
-                default=30.0,
-                minimum=1.0,
+                key="center_x",
+                label="CX %",
+                default=50.0,
+                minimum=5.0,
                 maximum=95.0,
                 step=1.0,
                 decimals=0,
                 suffix=" %",
             ),
             ControlDef(
-                key="phase",
-                label="Phase",
-                default=0.0,
-                minimum=0.0,
-                maximum=360.0,
+                key="center_y",
+                label="CY %",
+                default=50.0,
+                minimum=5.0,
+                maximum=95.0,
                 step=1.0,
                 decimals=0,
-                suffix="°",
-            ),
-            ControlDef(
-                key="target",
-                label="Target",
-                default=0,
-                minimum=0,
-                maximum=2,
-                step=1,
-                decimals=0,
-                kind="choice",
-                choices=["Radius", "Rotation", "Add"],
+                suffix=" %",
             ),
         ]
 
-    # -----------------------------------------------------------------
+    # -- Custom controls widget ----------------------------------------
+    def create_controls_widget(self, parent: QWidget | None = None) -> QWidget:
+        from axiscope.views.oscilloscope_controls import OscilloscopeControls
+
+        return OscilloscopeControls(self, parent)
+
+    # -- Signal generation ---------------------------------------------
     def generate_paths(
         self,
         params: dict[str, float],
         paper: PaperSize,
         stroke_mm: float,
     ) -> list[QPainterPath]:
-        # Split flat {key_N} dict into per-layer dicts (works for N=1 too)
-        layers = ToolControlsPanel.split_layers(params)
+        master = params
 
-        # Master params (first layer)
-        master = layers[0]
-        duration = master.get("duration", 1.0)
-        samples = int(master.get("samples", 2000))
-        cx_frac = master.get("center_x", 50.0) / 100.0
-        cy_frac = master.get("center_y", 50.0) / 100.0
+        duration = master.get("duration", 3.0)
+        samples_per_rev = int(master.get("samples_per_rev", 20000))
+        total_samples = int(samples_per_rev * duration)
+
         paper_w = paper.display_width
         paper_h = paper.display_height
-
+        cx_frac = master.get("center_x", 50.0) / 100.0
+        cy_frac = master.get("center_y", 50.0) / 100.0
         cx = (cx_frac - 0.5) * paper_w
         cy = (cy_frac - 0.5) * paper_h
 
-        # Shared theta array (may be warped by FM modulators)
-        theta = np.linspace(0, 2 * np.pi * duration, samples)
+        # ---- theta array ---------------------------------------------
+        theta = np.linspace(0, 2 * np.pi * duration, total_samples)
 
-        # Separate modulators by target type
-        modulators = layers[1:] if len(layers) > 1 else []
-        fm_mods = [m for m in modulators if int(m.get("target", 0)) == 1]  # Rotation
-        am_mods = [m for m in modulators if int(m.get("target", 0)) == 0]  # Radius
-        add_mods = [m for m in modulators if int(m.get("target", 0)) == 2]  # Add
+        # ---- FM ------------------------------------------------------
+        carrier_freq = master.get("carrier_freq", 440.0)
+        fm_freq = master.get("fm_freq", 100.0)
+        fm_amount = master.get("fm_amount", 0.0) / 100.0
+        if fm_amount > 0 and fm_freq > 0:
+            phase = carrier_freq * theta + fm_amount * carrier_freq * np.sin(
+                fm_freq * theta
+            )
+        else:
+            phase = carrier_freq * theta
 
-        # -- Phase 1: FM — warp theta (Rotation modulation) -----------
-        # Each FM modulator adds angular displacement proportional to
-        # its waveform.  Amp % controls the maximum warp in radians.
-        for mod in fm_mods:
-            freq = mod.get("frequency", 3.0)
-            amp_pct = mod.get("amplitude", 30.0)
-            phase_deg = mod.get("phase", 0.0)
-            wf = int(mod.get("waveform", 1))
-            phase_rad = np.radians(phase_deg)
-            # Warp depth: 0 .. π  (100 % = ±180° shift)
-            warp_depth = (amp_pct / 100.0) * np.pi
-            mod_signal = self._waveform(theta * freq + phase_rad, wf)
-            # Map [0, 1] → [-warp_depth, +warp_depth]
-            theta = theta + (2 * mod_signal - 1) * warp_depth
+        # ---- Carrier waveform ----------------------------------------
+        wave = int(master.get("carrier_wave", 0))
+        carrier = self._waveform(phase, wave)  # [0, 1]
 
-        # -- Phase 2: compute master radius on (possibly warped) theta -
-        freq_m = master.get("frequency", 5.0)
-        amp_pct_m = master.get("amplitude", 80.0)
-        phase_deg_m = master.get("phase", 0.0)
-        wf_m = int(master.get("waveform", 0))
-        phase_rad_m = np.radians(phase_deg_m)
-        max_r_master = min(paper_w, paper_h) / 2 * (amp_pct_m / 100.0)
-        r = max_r_master * self._waveform(theta * freq_m + phase_rad_m, wf_m)
+        # ---- AM ------------------------------------------------------
+        am_freq = master.get("am_freq", 10.0)
+        am_amount = master.get("am_amount", 0.0) / 100.0
+        if am_amount > 0 and am_freq > 0:
+            am_env = 1.0 + am_amount * np.sin(am_freq * theta)
+            r = carrier * am_env
+        else:
+            r = carrier
 
-        # -- Phase 3: AM — modulate radius (Radius modulation) --------
-        # Each AM modulator scales the radius by its waveform.
-        # Amp % controls modulation depth: at 100 % the radius can go
-        # to zero when the modulator is at 0.
-        for mod in am_mods:
-            freq = mod.get("frequency", 3.0)
-            amp_pct = mod.get("amplitude", 30.0)
-            phase_deg = mod.get("phase", 0.0)
-            wf = int(mod.get("waveform", 1))
-            phase_rad = np.radians(phase_deg)
-            depth = amp_pct / 100.0  # 0 .. 1
-            mod_signal = self._waveform(theta * freq + phase_rad, wf)  # [0, 1]
-            # r *= (1 - depth) + depth * mod_signal   →  range [1-depth, 1]
-            r = r * ((1 - depth) + depth * mod_signal)
+        # ---- ADSR envelope (per-revolution) --------------------------
+        attack_pct = master.get("attack", 5.0) / 100.0
+        decay_pct = master.get("decay", 10.0) / 100.0
+        sustain_level = master.get("sustain", 80.0) / 100.0
+        release_pct = master.get("release", 10.0) / 100.0
+        if attack_pct > 0 or decay_pct > 0 or release_pct > 0:
+            r = r * self._adsr_envelope(
+                theta, attack_pct, decay_pct, sustain_level, release_pct
+            )
 
-        # -- Phase 4: Add — classic additive synthesis -----------------
-        for mod in add_mods:
-            freq = mod.get("frequency", 3.0)
-            amp_pct = mod.get("amplitude", 30.0)
-            phase_deg = mod.get("phase", 0.0)
-            wf = int(mod.get("waveform", 1))
-            phase_rad = np.radians(phase_deg)
-            max_r_mod = min(paper_w, paper_h) / 2 * (amp_pct / 100.0)
-            mod_signal = self._waveform(theta * freq + phase_rad, wf)
-            r += max_r_mod * mod_signal
-
-        # Fit: normalize to fill available radius
+        # ---- Fit & scale ---------------------------------------------
         fit_on = int(master.get("fit", 1)) == 1
         if fit_on and abs(r).max() > 0:
             max_avail = min(paper_w, paper_h) / 2 * 0.95
             r = r / abs(r).max() * max_avail
 
-        # Final scale multiplier
         final_scale = master.get("final_scale", 100.0) / 100.0
         r = r * final_scale
 
+        # ---- Polar → Cartesian ---------------------------------------
         x = cx + r * np.cos(theta)
         y = cy + r * np.sin(theta)
 
@@ -307,17 +299,122 @@ class OscilloscopeTool(BaseTool):
 
     # -----------------------------------------------------------------
     @staticmethod
-    def _waveform(t: np.ndarray, kind: int) -> np.ndarray:
-        if kind == 0:  # |sin|
-            return np.abs(np.sin(t))
-        elif kind == 1:  # sin (signed → [0,1])
-            return (np.sin(t) + 1) / 2
-        elif kind == 2:  # |cos|
-            return np.abs(np.cos(t))
-        elif kind == 3:  # triangle
-            return (
-                2 * np.abs(2 * (t / (2 * np.pi) - np.floor(t / (2 * np.pi) + 0.5)))
-                - 0.5
-                + 0.5
+    def _waveform(phase: np.ndarray, kind: int) -> np.ndarray:
+        """Map *phase* (radians) to [0, 1] for the chosen waveform."""
+        if kind == 0:  # Sine
+            return (np.sin(phase) + 1.0) / 2.0
+        elif kind == 1:  # Square
+            return (np.sign(np.sin(phase)) + 1.0) / 2.0
+        elif kind == 2:  # Saw
+            return (phase / (2 * np.pi)) % 1.0
+        return (np.sin(phase) + 1.0) / 2.0
+
+    @staticmethod
+    def _adsr_envelope(
+        theta: np.ndarray,
+        attack: float,
+        decay: float,
+        sustain: float,
+        release: float,
+    ) -> np.ndarray:
+        """Per-revolution ADSR envelope (one repeat every 2π).
+
+        *attack*, *decay*, *release* are fractions of one revolution.
+        *sustain* is the level (0..1) held between decay and release.
+        """
+        intra = (theta % (2 * np.pi)) / (2 * np.pi)  # [0, 1) per revolution
+        env = np.zeros_like(intra)
+
+        # Attack:  0 → attack
+        a_mask = intra < attack
+        if attack > 0:
+            env[a_mask] = intra[a_mask] / attack
+
+        # Decay:  attack → attack+decay
+        d_start = attack
+        d_end = attack + decay
+        d_mask = (intra >= d_start) & (intra < d_end)
+        if decay > 0:
+            frac = (intra[d_mask] - d_start) / decay
+            env[d_mask] = 1.0 - (1.0 - sustain) * frac
+
+        # Sustain:  attack+decay → 1-release
+        s_start = attack + decay
+        s_end = 1.0 - release
+        s_mask = (intra >= s_start) & (intra < s_end)
+        env[s_mask] = sustain
+
+        # Release:  1-release → 1
+        r_start = 1.0 - release
+        r_mask = intra >= r_start
+        if release > 0:
+            frac = (intra[r_mask] - r_start) / release
+            env[r_mask] = sustain * (1.0 - frac)
+
+        return np.clip(env, 0.0, 1.0)
+
+    # -- Audio preview -------------------------------------------------
+    def generate_audio(
+        self,
+        params: dict[str, float],
+        sample_rate: int = 44100,
+    ) -> np.ndarray | None:
+        """Generate audio samples for the current parameters.
+
+        Playback maps 1 revolution → 1 second, so *carrier_freq* and
+        friends map directly to audible Hz.
+
+        Returns a float64 NumPy array in [-1, +1] or ``None`` if
+        ``sounddevice`` is not available.
+        """
+        try:
+            import sounddevice as sd  # noqa: F401
+        except ImportError:
+            return None
+
+        master = params
+        duration = master.get("duration", 3.0)
+        total_audio_samples = int(sample_rate * duration)
+
+        # Time array: 1 rev = 1 s
+        t = np.linspace(0, duration, total_audio_samples, endpoint=False)
+        theta = 2 * np.pi * t  # convert seconds → radians
+
+        # FM
+        carrier_freq = master.get("carrier_freq", 440.0)
+        fm_freq = master.get("fm_freq", 100.0)
+        fm_amount = master.get("fm_amount", 0.0) / 100.0
+        if fm_amount > 0 and fm_freq > 0:
+            phase = carrier_freq * theta + fm_amount * carrier_freq * np.sin(
+                fm_freq * theta
             )
-        return np.abs(np.sin(t))
+        else:
+            phase = carrier_freq * theta
+
+        # Carrier
+        wave = int(master.get("carrier_wave", 0))
+        audio = self._waveform(phase, wave)  # [0, 1]
+
+        # AM
+        am_freq = master.get("am_freq", 10.0)
+        am_amount = master.get("am_amount", 0.0) / 100.0
+        if am_amount > 0 and am_freq > 0:
+            am_env = 1.0 + am_amount * np.sin(am_freq * theta)
+            audio = audio * am_env
+
+        # ADSR
+        attack_pct = master.get("attack", 5.0) / 100.0
+        decay_pct = master.get("decay", 10.0) / 100.0
+        sustain_level = master.get("sustain", 80.0) / 100.0
+        release_pct = master.get("release", 10.0) / 100.0
+        if attack_pct > 0 or decay_pct > 0 or release_pct > 0:
+            audio = audio * self._adsr_envelope(
+                theta, attack_pct, decay_pct, sustain_level, release_pct
+            )
+
+        # Normalise to [-1, +1]
+        peak = abs(audio).max()
+        if peak > 0:
+            audio = audio / peak * 0.95
+
+        return audio.astype(np.float64)

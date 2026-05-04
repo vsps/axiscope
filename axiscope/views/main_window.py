@@ -53,9 +53,15 @@ class MainWindow(QMainWindow):
         self._svg_controls = self._build_svg_controls()
         root_layout.addWidget(self._svg_controls)
 
-        self._tool_controls = ToolControlsPanel()
-        self._tool_controls.params_changed.connect(self._on_tool_params)
-        root_layout.addWidget(self._tool_controls)
+        self._tool_controls_container = QWidget()
+        self._tool_controls_container_layout = QVBoxLayout(
+            self._tool_controls_container
+        )
+        self._tool_controls_container_layout.setContentsMargins(0, 0, 0, 0)
+        self._tool_controls_container_layout.setSpacing(0)
+        self._tool_controls: ToolControlsPanel | None = None
+        self._custom_tool_controls: QWidget | None = None
+        root_layout.addWidget(self._tool_controls_container)
 
         self._scene = QGraphicsScene()
         self._canvas = CanvasView(self._scene)
@@ -75,7 +81,7 @@ class MainWindow(QMainWindow):
         self._plot_ctrl.plot_finished.connect(self._on_plot_finished)
 
         self._tools: dict[str, BaseTool] = {
-            "Polar Oscilloscope": OscilloscopeTool(),
+            "Oscilloscope": OscilloscopeTool(),
         }
         self._active_tool: BaseTool | None = None
         self._svg_paths: list[QPainterPath] = []
@@ -114,7 +120,7 @@ class MainWindow(QMainWindow):
         self._toolbar._tool_combo.setCurrentText("None")
         self._toolbar._tool_combo.blockSignals(False)
         self._active_tool = None
-        self._tool_controls.set_tool(None)
+        self._clear_tool_controls()
 
         self._svg_paths = paths
         self._reset_svg_controls()
@@ -126,17 +132,27 @@ class MainWindow(QMainWindow):
         self._status_bar.set_status_text(f"Loaded: {filename}")
 
     def _on_tool_changed(self, name: str) -> None:
+        self._clear_tool_controls()
         tool = self._tools.get(name)
         if tool is not None:
             self._active_tool = tool
             self._svg_controls.setVisible(False)
-            self._tool_controls.set_tool(tool)
+            custom = tool.create_controls_widget()
+            if custom is not None:
+                self._custom_tool_controls = custom
+                if hasattr(custom, "params_changed"):
+                    custom.params_changed.connect(self._on_tool_params)
+                self._tool_controls_container_layout.addWidget(custom)
+            else:
+                self._tool_controls = ToolControlsPanel()
+                self._tool_controls.params_changed.connect(self._on_tool_params)
+                self._tool_controls.set_tool(tool)
+                self._tool_controls_container_layout.addWidget(self._tool_controls)
             self._canvas.clear_preview()
             self._regenerate_tool_preview()
             self._status_bar.set_status_text(f"Tool: {name}")
         else:
             self._active_tool = None
-            self._tool_controls.set_tool(None)
             self._canvas.clear_preview()
             self._status_bar.set_status_text("Ready")
 
@@ -151,12 +167,34 @@ class MainWindow(QMainWindow):
     def _on_tool_params(self, params: dict) -> None:  # noqa: ARG002
         self._regenerate_tool_preview()
 
+    def _clear_tool_controls(self) -> None:
+        if self._tool_controls is not None:
+            self._tool_controls.set_tool(None)
+            self._tool_controls_container_layout.removeWidget(self._tool_controls)
+            self._tool_controls.deleteLater()
+            self._tool_controls = None
+        if self._custom_tool_controls is not None:
+            self._tool_controls_container_layout.removeWidget(
+                self._custom_tool_controls
+            )
+            self._custom_tool_controls.deleteLater()
+            self._custom_tool_controls = None
+
     def _regenerate_tool_preview(self) -> None:
         if self._active_tool is None:
             return
         paper = PaperSize.from_name(self._toolbar.current_paper())
         stroke_mm = self._settings.data.stroke_width
-        params = self._tool_controls.current_params()
+
+        # Get params from whichever controls widget is active
+        if self._custom_tool_controls is not None and hasattr(
+            self._custom_tool_controls, "current_params"
+        ):
+            params = self._custom_tool_controls.current_params()
+        elif self._tool_controls is not None:
+            params = self._tool_controls.current_params()
+        else:
+            return
 
         self._canvas.clear_preview()
         try:
@@ -311,9 +349,7 @@ class MainWindow(QMainWindow):
 
     def _on_device_connection(self, connected: bool) -> None:
         if connected:
-            self._status_bar.set_connected(
-                True, self._device.port, self._device.model
-            )
+            self._status_bar.set_connected(True, self._device.port, self._device.model)
         else:
             self._status_bar.set_connected(False)
 
