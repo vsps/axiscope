@@ -64,8 +64,8 @@ class OscilloscopeControls(QWidget):
 
         grid = QGridLayout(self)
         grid.setContentsMargins(8, 4, 8, 4)
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(3)
+        grid.setHorizontalSpacing(4)
+        grid.setVerticalSpacing(2)
 
         defaults = {c.key: c.default for c in tool.controls}
 
@@ -100,6 +100,7 @@ class OscilloscopeControls(QWidget):
                     w: QComboBox | QDoubleSpinBox | QSpinBox = QComboBox()
                     w.addItems(ctrl.choices)
                     w.setCurrentIndex(int(defaults.get(ctrl.key, 0)))
+                    w.setFixedWidth(100)
                     w.currentIndexChanged.connect(self._emit)
                     if ctrl.key == "mode":
                         w.currentIndexChanged.connect(self._update_y_ratio_visible)
@@ -109,7 +110,7 @@ class OscilloscopeControls(QWidget):
                     w.setSingleStep(int(ctrl.step))
                     w.setValue(int(defaults.get(ctrl.key, 0)))
                     w.setSuffix(ctrl.suffix)
-                    w.setFixedWidth(110)
+                    w.setFixedWidth(100)
                     w.valueChanged.connect(lambda _v: self._emit())
                 else:
                     w = QDoubleSpinBox()
@@ -118,7 +119,7 @@ class OscilloscopeControls(QWidget):
                     w.setDecimals(ctrl.decimals)
                     w.setValue(defaults.get(ctrl.key, 0.0))
                     w.setSuffix(ctrl.suffix)
-                    w.setFixedWidth(110)
+                    w.setFixedWidth(100)
                     w.valueChanged.connect(lambda _v: self._emit())
 
                 cell_lay.addWidget(w)
@@ -142,6 +143,7 @@ class OscilloscopeControls(QWidget):
             "color: #666; }"
         )
         self._play_btn.clicked.connect(self._on_play)
+        grid.setColumnStretch(7, 1)  # absorb remaining space
         grid.addWidget(self._play_btn, 3, 2)
 
         self._update_y_ratio_visible()
