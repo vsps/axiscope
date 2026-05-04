@@ -111,6 +111,8 @@ class DeviceModel(QObject):
             print(f"[DeviceModel] Connect failed: {exc}")
             return False
         self._ad.initialize_options()
+        self._ad.options.pen_pos_up = 60
+        self._ad.options.pen_pos_down = 30
         self._ad.step_scale = 2.0 * self._ad.params.native_res_factor
         self._ad.speed_pendown = self._ad.options.speed_pendown
         self._ad.speed_penup = self._ad.options.speed_penup

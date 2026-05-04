@@ -315,6 +315,13 @@ class MainWindow(QMainWindow):
         self._status_bar.set_pen_state(True)
         self._status_bar.set_status_text("Aligned - motors off, pen up")
 
+    def _on_nudge(self, dx: float, dy: float) -> None:
+        if not self._device.connected or not self._device.motor_enabled:
+            self._status_bar.set_status_text("Connect and engage motors first")
+            return
+        self._device.nudge(dx, dy)
+        self._status_bar.set_position(self._device.x, self._device.y)
+
     def _on_escape(self) -> None:
         if self._active_tool is not None:
             self._toolbar._tool_combo.setCurrentText("None")
@@ -397,7 +404,9 @@ class MainWindow(QMainWindow):
             self._status_bar.set_status_text("Not connected")
             return
         self._device.home()
-        self._status_bar.set_status_text("Homing..." if self._device.motor_enabled else "Motors off")
+        self._status_bar.set_status_text(
+            "Homing..." if self._device.motor_enabled else "Motors off"
+        )
 
     def _on_pause(self) -> None:
         if self._plot_ctrl.busy:
