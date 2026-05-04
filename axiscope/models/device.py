@@ -178,13 +178,9 @@ class DeviceModel(QObject):
     def nudge(self, dx_mm: float, dy_mm: float) -> None:
         if not self._connected or not self._motor_enabled:
             return
-        self._ad.options.mode = "plot"
-        self._ad.setup_command()
         self._ad.go_to_position(self._x + dx_mm, self._y + dy_mm)
         self._x += dx_mm
         self._y += dy_mm
-        self._ad.options.mode = "align"
-        self._ad.setup_command()
         print(f"[DeviceModel] nudged to ({self._x:.1f}, {self._y:.1f})")
 
     def setup_plot_mode(self) -> None:
