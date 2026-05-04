@@ -333,8 +333,8 @@ class OscilloscopeTool(BaseTool):
                 sig_x = sig_x * self._adsr_envelope(
                     theta, attack_pct, decay_pct, sustain_level, release_pct
                 )
-            # Y channel: same waveform at different frequency
-            y_phase = carrier_freq * theta * y_ratio
+            # Y channel: same waveform at different frequency, 90° out of phase
+            y_phase = carrier_freq * theta * y_ratio + np.pi / 2
             if fm_amount > 0 and fm_freq > 0:
                 y_phase = y_phase + fm_amount * carrier_freq * np.sin(fm_freq * theta)
             sig_y = 2.0 * self._waveform(y_phase, wave) - 1.0
