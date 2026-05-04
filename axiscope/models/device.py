@@ -152,8 +152,9 @@ class DeviceModel(QObject):
             return True
         self._pen_raised = not self._pen_raised
         self._ad.options.mode = "manual"
-        self._ad.options.manual_cmd = "pen_up" if self._pen_raised else "pen_down"
+        self._ad.options.manual_cmd = "raise_pen" if self._pen_raised else "lower_pen"
         self._ad.manual_command()
+        print(f"[DeviceModel] pen={'up' if self._pen_raised else 'down'}")
         return self._pen_raised
 
     def align(self) -> None:
@@ -184,6 +185,7 @@ class DeviceModel(QObject):
         self._y += dy_mm
         self._ad.options.mode = "align"
         self._ad.setup_command()
+        print(f"[DeviceModel] nudged to ({self._x:.1f}, {self._y:.1f})")
 
     def setup_plot_mode(self) -> None:
         self._ad.options.mode = "plot"
