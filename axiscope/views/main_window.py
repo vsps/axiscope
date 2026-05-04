@@ -71,7 +71,10 @@ class MainWindow(QMainWindow):
         self._status_bar = StatusBar()
         self._status_bar.toggle_motors_clicked.connect(self._on_toggle_motors)
         self._status_bar.toggle_pen_clicked.connect(self._on_toggle_pen)
+        self._status_bar.home_clicked.connect(self._on_home)
         self._status_bar.plot_clicked.connect(self._on_plot)
+        self._status_bar.pause_clicked.connect(self._on_pause)
+        self._status_bar.cancel_clicked.connect(self._on_cancel)
         root_layout.addWidget(self._status_bar)
 
         self._device.connected_changed.connect(self._on_device_connection)
@@ -371,8 +374,24 @@ class MainWindow(QMainWindow):
             self._status_bar.set_status_text("Not connected")
             return
         self._device.toggle_motors()
+        self._status_bar.set_motor_state(self._device.motor_enabled)
         state = "ON" if self._device.motor_enabled else "OFF"
         self._status_bar.set_status_text(f"Motors: {state}")
+
+    def _on_home(self) -> None:
+        if not self._device.connected:
+            self._status_bar.set_status_text("Not connected")
+            return
+        self._device.home()
+        self._status_bar.set_status_text("Homing..." if self._device.motor_enabled else "Motors off")
+
+    def _on_pause(self) -> None:
+        if self._plot_ctrl.busy:
+            self._plot_ctrl.pause()
+
+    def _on_cancel(self) -> None:
+        if self._plot_ctrl.busy:
+            self._plot_ctrl.abort()
 
     def _on_toggle_pen(self) -> None:
         if not self._device.connected:
@@ -403,7 +422,7 @@ class MainWindow(QMainWindow):
 
     def _on_plot_finished(self) -> None:
         self._status_bar.set_status_text("Plot complete")
-        self._status_bar._plot_btn.setEnabled(True)
+        self._status_bar.set_plotting(False)
 
     # =================================================================
     # Device callbacks

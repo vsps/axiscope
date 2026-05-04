@@ -32,6 +32,7 @@ class PlotController(QObject):
         self._settings = settings
         self._busy = False
         self._abort = False
+        self._paused = False
 
     @property
     def busy(self) -> bool:
@@ -40,6 +41,9 @@ class PlotController(QObject):
     def abort(self) -> None:
         self._abort = True
 
+    def pause(self) -> None:
+        self._paused = not self._paused
+
     # -----------------------------------------------------------------
     def start_plot(self, paths: list[QPainterPath], paper: PaperSize) -> None:
         if self._busy or not self._device.connected or not paths:
@@ -47,6 +51,7 @@ class PlotController(QObject):
 
         self._busy = True
         self._abort = False
+        self._paused = False
         self.plot_started.emit()
         QTimer.singleShot(0, lambda: self._execute_plot(paths, paper))
 
@@ -79,6 +84,8 @@ class PlotController(QObject):
                 time.sleep(0.2)
 
                 for i in range(1, n):
+                    while self._paused and not self._abort:
+                        time.sleep(0.1)
                     if self._abort:
                         break
                     ex, ey = path.elementAt(i).x, path.elementAt(i).y
