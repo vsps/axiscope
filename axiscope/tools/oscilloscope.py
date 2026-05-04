@@ -323,6 +323,7 @@ class OscilloscopeTool(BaseTool):
         y_ratio = master.get("y_ratio", 2.0)
         half_w = paper_w / 2 * 0.95
         half_h = paper_h / 2 * 0.95
+        half_scale = min(half_w, half_h)  # 1:1 for Lissajous
 
         if mode == 1:  # Lissajous - true X-Y oscilloscope
             # X channel: bipolar carrier [-1, +1] with AM + ADSR
@@ -352,8 +353,8 @@ class OscilloscopeTool(BaseTool):
                     sig_y = sig_y / peak
             sig_x = sig_x * final_scale
             sig_y = sig_y * final_scale
-            x = cx + sig_x * half_w
-            y = cy + sig_y * half_h
+            x = cx + sig_x * half_scale
+            y = cy + sig_y * half_scale
         else:  # Polar
             x = cx + r * np.cos(theta)
             y = cy + r * np.sin(theta)
