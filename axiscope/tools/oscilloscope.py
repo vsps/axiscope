@@ -113,7 +113,7 @@ class OscilloscopeTool(BaseTool):
             ControlDef(
                 key="bypass_adsr",
                 label="ADSR",
-                default=1,
+                default=0,
                 minimum=0,
                 maximum=1,
                 step=1,
@@ -186,12 +186,13 @@ class OscilloscopeTool(BaseTool):
             ControlDef(
                 key="sweep",
                 label="Sweep",
-                default=20.0,
-                minimum=1.0,
-                maximum=20000.0,
-                step=10.0,
+                default=0,
+                minimum=0,
+                maximum=8,
+                step=1,
                 decimals=0,
-                suffix=" Hz",
+                kind="choice",
+                choices=["20", "40", "60", "80", "100", "120", "140", "160", "200"],
             ),
             ControlDef(
                 key="duration",
@@ -287,15 +288,12 @@ class OscilloscopeTool(BaseTool):
 
         # ---- Sweep & effective frequencies --------------------------
         carrier_freq = master.get("carrier_freq", 440.0)
-        sweep = master.get("sweep", 20.0)
-        if sweep > 0:
-            eff_carrier = carrier_freq / sweep
-            eff_fm = master.get("fm_freq", 100.0) / sweep
-            eff_am = master.get("am_freq", 10.0) / sweep
-        else:
-            eff_carrier = carrier_freq
-            eff_fm = master.get("fm_freq", 100.0)
-            eff_am = master.get("am_freq", 10.0)
+        sweep_idx = int(master.get("sweep", 0))
+        sweep_values = [20, 40, 60, 80, 100, 120, 140, 160, 200]
+        sweep = sweep_values[min(sweep_idx, len(sweep_values)-1)]
+        eff_carrier = carrier_freq / sweep
+        eff_fm = master.get("fm_freq", 100.0) / sweep
+        eff_am = master.get("am_freq", 10.0) / sweep
 
         # ---- FM ------------------------------------------------------
         fm_amount = master.get("fm_amount", 0.0) / 100.0
@@ -328,6 +326,12 @@ class OscilloscopeTool(BaseTool):
             r = r * self._adsr_envelope(
                 theta, attack_pct, decay_pct, sustain_level, release_pct
             )
+
+        # ---- Centre the signal (bipolar) ----------------------------
+        r_min, r_max = r.min(), r.max()
+        if r_max > r_min:
+            r = (r - r_min) / (r_max - r_min)  # [0, 1]
+        r = 2.0 * r - 1.0  # [-1, 1]
 
         # ---- Fit & scale ---------------------------------------------
         fit_on = int(master.get("fit", 1)) == 1
@@ -375,14 +379,8 @@ class OscilloscopeTool(BaseTool):
             x = cx + sig_x * half_scale
             y = cy + sig_y * half_scale
         else:  # Polar
-            sweep = master.get("sweep", 20.0)
-            if sweep > 0 and carrier_freq > 0:
-                ratio = carrier_freq / sweep  # petals per revolution
-            else:
-                ratio = 1.0
-            polar_phase = ratio * theta
-            x = cx + r * np.cos(polar_phase)
-            y = cy + r * np.sin(polar_phase)
+            x = cx + r * np.cos(theta)
+            y = cy + r * np.sin(theta)
 
         path = QPainterPath()
         path.moveTo(QPointF(x[0], y[0]))

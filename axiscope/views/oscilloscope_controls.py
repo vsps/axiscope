@@ -104,9 +104,9 @@ class OscilloscopeControls(QWidget):
 
         grid = QGridLayout(self)
         grid.setContentsMargins(8, 4, 8, 4)
-        grid.setHorizontalSpacing(4)
+        grid.setHorizontalSpacing(3)
         grid.setVerticalSpacing(2)
-        grid.setColumnStretch(7, 1)
+        
 
         defaults = {c.key: c.default for c in tool.controls}
 
