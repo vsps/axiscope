@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -46,6 +47,50 @@ GRID_ROWS = [
 ]
 
 
+class _ShiftDoubleSpinBox(QDoubleSpinBox):
+    """Arrow = 1, Shift+arrow = original coarse step."""
+
+    def __init__(self, coarse_step: float = 10.0, parent=None):
+        super().__init__(parent)
+        self._coarse = coarse_step
+        self.setSingleStep(1.0)
+
+    def stepBy(self, steps: int):
+        if self._shift_held():
+            super().stepBy(steps * int(self._coarse))
+        else:
+            super().stepBy(steps)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        self._shift = event.modifiers() & Qt.ShiftModifier
+        super().keyPressEvent(event)
+
+    def _shift_held(self) -> bool:
+        return getattr(self, "_shift", False)
+
+
+class _ShiftIntSpinBox(QSpinBox):
+    """Arrow = 1, Shift+arrow = original coarse step."""
+
+    def __init__(self, coarse_step: int = 10, parent=None):
+        super().__init__(parent)
+        self._coarse = coarse_step
+        self.setSingleStep(1)
+
+    def stepBy(self, steps: int):
+        if self._shift_held():
+            super().stepBy(steps * self._coarse)
+        else:
+            super().stepBy(steps)
+
+    def keyPressEvent(self, event: QKeyEvent):
+        self._shift = event.modifiers() & Qt.ShiftModifier
+        super().keyPressEvent(event)
+
+    def _shift_held(self) -> bool:
+        return getattr(self, "_shift", False)
+
+
 class OscilloscopeControls(QWidget):
     """Grid-based control panel for the Oscilloscope tool.
 
@@ -66,11 +111,11 @@ class OscilloscopeControls(QWidget):
         grid.setContentsMargins(8, 4, 8, 4)
         grid.setHorizontalSpacing(4)
         grid.setVerticalSpacing(2)
+        grid.setColumnStretch(7, 1)
 
         defaults = {c.key: c.default for c in tool.controls}
 
         for row_idx, (label, keys) in enumerate(GRID_ROWS):
-            # Row label in column 0
             lbl = QLabel(label)
             lbl.setStyleSheet(
                 "background: transparent; font-weight: bold; color: #aaa;"
@@ -83,7 +128,6 @@ class OscilloscopeControls(QWidget):
                 if ctrl is None:
                     continue
 
-                # Build a stacked cell: header label above widget
                 cell = QWidget()
                 cell.setStyleSheet("background: transparent;")
                 cell_lay = QVBoxLayout(cell)
@@ -105,17 +149,15 @@ class OscilloscopeControls(QWidget):
                     if ctrl.key == "mode":
                         w.currentIndexChanged.connect(self._update_y_ratio_visible)
                 elif ctrl.kind == "int":
-                    w = QSpinBox()
+                    w = _ShiftIntSpinBox(coarse_step=int(ctrl.step))
                     w.setRange(int(ctrl.minimum), int(ctrl.maximum))
-                    w.setSingleStep(int(ctrl.step))
                     w.setValue(int(defaults.get(ctrl.key, 0)))
                     w.setSuffix(ctrl.suffix)
                     w.setFixedWidth(100)
                     w.valueChanged.connect(lambda _v: self._emit())
                 else:
-                    w = QDoubleSpinBox()
+                    w = _ShiftDoubleSpinBox(coarse_step=ctrl.step)
                     w.setRange(ctrl.minimum, ctrl.maximum)
-                    w.setSingleStep(ctrl.step)
                     w.setDecimals(ctrl.decimals)
                     w.setValue(defaults.get(ctrl.key, 0.0))
                     w.setSuffix(ctrl.suffix)
@@ -131,7 +173,6 @@ class OscilloscopeControls(QWidget):
                 if ctrl.key in ("attack", "decay", "sustain", "release"):
                     self._adsr_cells.append(cell)
 
-        # Play button in row 3
         self._play_btn = QPushButton("\u25b6 Play")
         self._play_btn.setFixedWidth(90)
         self._play_btn.setStyleSheet(
@@ -143,12 +184,10 @@ class OscilloscopeControls(QWidget):
             "color: #666; }"
         )
         self._play_btn.clicked.connect(self._on_play)
-        grid.setColumnStretch(7, 1)  # absorb remaining space
         grid.addWidget(self._play_btn, 3, 2)
 
         self._update_y_ratio_visible()
 
-        # Check sounddevice
         try:
             import sounddevice  # noqa: F401
 
@@ -185,7 +224,6 @@ class OscilloscopeControls(QWidget):
                 result[key] = float(w.currentIndex())
             else:
                 result[key] = w.value()
-        # Grey out ADSR cells when bypassed
         bypass = int(result.get("bypass_adsr", 1))
         for cell in self._adsr_cells:
             cell.setEnabled(bypass == 1)

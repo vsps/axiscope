@@ -92,7 +92,7 @@ class CanvasView(QGraphicsView):
 
     def add_preview_path(self, path: QPainterPath) -> None:
         """Add a preview path on top of the page."""
-        pen = QPen(PREVIEW_STROKE, 0.3)
+        pen = QPen(PREVIEW_STROKE, 0.5)
         pen.setCosmetic(True)
         item = self.scene().addPath(path, pen)
         self._preview_items.append(item)
