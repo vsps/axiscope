@@ -15,6 +15,7 @@ class StatusBar(QWidget):
     toggle_motors_clicked = Signal()
     toggle_pen_clicked = Signal()
     home_clicked = Signal()
+    align_clicked = Signal()
     plot_clicked = Signal()
     pause_clicked = Signal()
     cancel_clicked = Signal()
@@ -54,6 +55,10 @@ class StatusBar(QWidget):
         self._home_btn = QPushButton("\u2302 Home")
         self._home_btn.clicked.connect(self.home_clicked)
         layout.addWidget(self._home_btn)
+
+        self._align_btn = QPushButton("ALIGN")
+        self._align_btn.clicked.connect(self.align_clicked)
+        layout.addWidget(self._align_btn)
 
         self._plot_btn = QPushButton("\u25b6 PLOT")
         self._plot_btn.setStyleSheet(

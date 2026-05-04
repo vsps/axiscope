@@ -5,8 +5,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
-import serial
 import serial.tools.list_ports
+from axidrawinternal.axidraw import AxiDraw
 from PySide6.QtCore import QObject, Signal
 
 # -- EBB constants ----------------------------------------------------
@@ -28,8 +28,7 @@ class DeviceInfo:
 
 
 class DeviceModel(QObject):
-    """Holds connection state and device info.  Communicates with the
-    EiBotBoard (EBB) over a serial port for real hardware control."""
+    """Wraps the AxiDraw Python API for motor, pen and plot control."""
 
     connected_changed = Signal(bool)
     position_changed = Signal(float, float)
@@ -39,7 +38,8 @@ class DeviceModel(QObject):
         super().__init__()
         self._connected = False
         self._info = DeviceInfo()
-        self._ser: serial.Serial | None = None
+        self._ad = AxiDraw()
+        self._ser = None  # raw serial for SM commands
         self._x: float | None = None
         self._y: float | None = None
         self._motor_enabled = False
@@ -113,14 +113,13 @@ class DeviceModel(QObject):
         if self._connected:
             self.disconnect()
 
+        self._ad.options.port = port
         try:
-            self._ser = serial.Serial(
-                port=port,
-                baudrate=EBB_BAUD,
-                timeout=EBB_TIMEOUT,
-                write_timeout=EBB_TIMEOUT,
-            )
-        except (OSError, serial.SerialException) as exc:
+            self._ad.serial_connect()
+            import serial as _ser
+            self._ser = _ser.Serial(port=port, baudrate=EBB_BAUD, timeout=1.0,
+                                    write_timeout=1.0)
+        except Exception as exc:
             print(f"[DeviceModel] Failed to open {port}: {exc}")
             return False
 
@@ -177,6 +176,44 @@ class DeviceModel(QObject):
         self._ebb_command(cmd)
         return self._pen_raised
 
+
+    def align(self) -> None:
+        """Disengage motors and raise pen."""
+        if not self._connected:
+            return
+        self._ad.options.mode = "align"
+        try:
+            self._ad.setup_command()
+        except Exception:
+            pass
+        self._motor_enabled = False
+        self._pen_raised = True
+
+    def home(self) -> None:
+        """Walk to home position."""
+        if not self._connected or not self._motor_enabled:
+            return
+        self._ad.options.mode = "plot"
+        try:
+            self._ad.setup_command()
+        except Exception:
+            pass
+        self._ad.go_to_position(0, 0)
+        self._ad.options.mode = "align"
+        try:
+            self._ad.setup_command()
+        except Exception:
+            pass
+        self._x, self._y = 0, 0
+
+    def setup_plot_mode(self) -> None:
+        self._ad.options.mode = "plot"
+        self._ad.options.pen_pos_up = 60
+        self._ad.options.pen_pos_down = 30
+        try:
+            self._ad.setup_command()
+        except Exception:
+            pass
     def query_position(self) -> tuple[float | None, float | None]:
         """Poll current toolhead position from the EBB."""
         # EBB doesn't natively track absolute position — we'd need to
@@ -184,6 +221,10 @@ class DeviceModel(QObject):
         return self._x, self._y
 
     # -- raw EBB command -----------------------------------------------
+    @property
+    def raw_serial(self):
+        return self._ser
+
     def _ebb_command(self, cmd: str) -> str:
         """Send a raw command string to the EBB and return the response."""
         if not self._ser or not self._ser.is_open:

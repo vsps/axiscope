@@ -72,6 +72,7 @@ class MainWindow(QMainWindow):
         self._status_bar.toggle_motors_clicked.connect(self._on_toggle_motors)
         self._status_bar.toggle_pen_clicked.connect(self._on_toggle_pen)
         self._status_bar.home_clicked.connect(self._on_home)
+        self._status_bar.align_clicked.connect(self._on_align)
         self._status_bar.plot_clicked.connect(self._on_plot)
         self._status_bar.pause_clicked.connect(self._on_pause)
         self._status_bar.cancel_clicked.connect(self._on_cancel)
@@ -300,6 +301,15 @@ class MainWindow(QMainWindow):
         if not self._device.connected or not self._device.pen_raised:
             return
         self._on_toggle_pen()
+
+    def _on_align(self) -> None:
+        if not self._device.connected:
+            self._status_bar.set_status_text("Not connected")
+            return
+        self._device.align()
+        self._status_bar.set_motor_state(False)
+        self._status_bar.set_pen_state(True)
+        self._status_bar.set_status_text("Aligned - motors off, pen up")
 
     def _on_escape(self) -> None:
         if self._active_tool is not None:
