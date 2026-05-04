@@ -187,7 +187,7 @@ class OscilloscopeControls(QWidget):
             "color: #666; }"
         )
         self._play_btn.clicked.connect(self._on_play)
-        grid.addWidget(self._play_btn, 2, 9)
+        grid.addWidget(self._play_btn, 2, 10)
 
         self._update_y_ratio_visible()
 

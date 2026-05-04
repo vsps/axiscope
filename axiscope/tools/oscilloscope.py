@@ -354,6 +354,11 @@ class OscilloscopeTool(BaseTool):
 
         final_scale = master.get("final_scale", 100.0) / 100.0
         r = r * final_scale
+        # Apply DC offset after fit+scale (adds to r, shifts pattern)
+        offset_pct = master.get("offset", 0.0) / 100.0
+        if offset_pct != 0:
+            max_avail = min(paper_w, paper_h) / 2 * 0.95
+            r = r + offset_pct * max_avail
         # ---- Polar or Lissajous -> Cartesian --------------------------
         mode = int(master.get("mode", 0))
         y_ratio = master.get("y_ratio", 2.0)
