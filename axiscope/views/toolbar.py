@@ -1,6 +1,6 @@
 """Single-row minimal toolbar."""
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -11,11 +11,12 @@ from PySide6.QtWidgets import (
 
 
 class Toolbar(QWidget):
-    """Top bar: gear → paper size → load SVG → drawing tool."""
+    """Top bar: gear, paper, load SVG, save SVG, drawing tool."""
 
-    paper_changed = Signal(str)  # paper name e.g. "A4"
+    paper_changed = Signal(str)
     load_svg_clicked = Signal()
-    tool_changed = Signal(str)  # tool name
+    save_svg_clicked = Signal()
+    tool_changed = Signal(str)
     settings_clicked = Signal()
 
     def __init__(self, parent=None):
@@ -32,7 +33,6 @@ class Toolbar(QWidget):
         self._gear_btn.clicked.connect(self.settings_clicked)
         layout.addWidget(self._gear_btn)
 
-        # Separator
         layout.addWidget(self._sep())
 
         # Paper size
@@ -45,7 +45,6 @@ class Toolbar(QWidget):
         self._paper_combo.currentTextChanged.connect(self.paper_changed)
         layout.addWidget(self._paper_combo)
 
-        # Separator
         layout.addWidget(self._sep())
 
         # Load SVG
@@ -53,7 +52,11 @@ class Toolbar(QWidget):
         self._load_btn.clicked.connect(self.load_svg_clicked)
         layout.addWidget(self._load_btn)
 
-        # Separator
+        # Save SVG
+        self._save_btn = QPushButton("Save SVG")
+        self._save_btn.clicked.connect(self.save_svg_clicked)
+        layout.addWidget(self._save_btn)
+
         layout.addWidget(self._sep())
 
         # Drawing tool

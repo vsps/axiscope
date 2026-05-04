@@ -46,6 +46,7 @@ class MainWindow(QMainWindow):
         self._toolbar = Toolbar()
         self._toolbar.paper_changed.connect(self._on_paper_changed)
         self._toolbar.load_svg_clicked.connect(self._on_load_svg)
+        self._toolbar.save_svg_clicked.connect(self._on_save_svg)
         self._toolbar.tool_changed.connect(self._on_tool_changed)
         self._toolbar.settings_clicked.connect(self._on_settings)
         root_layout.addWidget(self._toolbar)
@@ -142,8 +143,6 @@ class MainWindow(QMainWindow):
                 self._custom_tool_controls = custom
                 if hasattr(custom, "params_changed"):
                     custom.params_changed.connect(self._on_tool_params)
-                if hasattr(custom, "save_svg_clicked"):
-                    custom.save_svg_clicked.connect(self._on_save_svg)
                 self._tool_controls_container_layout.addWidget(custom)
             else:
                 self._tool_controls = ToolControlsPanel()

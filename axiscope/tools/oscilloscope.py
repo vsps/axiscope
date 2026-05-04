@@ -306,15 +306,44 @@ class OscilloscopeTool(BaseTool):
 
         final_scale = master.get("final_scale", 100.0) / 100.0
         r = r * final_scale
-
-        # ---- Polar or Lissajous → Cartesian --------------------------
+        # ---- Polar or Lissajous -> Cartesian --------------------------
         mode = int(master.get("mode", 0))
         y_ratio = master.get("y_ratio", 2.0)
-        if mode == 1:  # Lissajous (X-Y)
-            half_w = paper_w / 2 * 0.95
-            half_h = paper_h / 2 * 0.95
-            x = cx + (r - 0.5) * 2 * half_w  # r [0,1] → [-half_w, +half_w]
-            y = cy + (r - 0.5) * 2 * half_h * np.sin(theta * y_ratio)
+        half_w = paper_w / 2 * 0.95
+        half_h = paper_h / 2 * 0.95
+
+        if mode == 1:  # Lissajous - true X-Y oscilloscope
+            # X channel: bipolar carrier [-1, +1] with AM + ADSR
+            sig_x = 2.0 * carrier - 1.0
+            if am_amount > 0 and am_freq > 0:
+                sig_x = sig_x * am_env
+            if attack_pct > 0 or decay_pct > 0 or release_pct > 0:
+                sig_x = sig_x * self._adsr_envelope(
+                    theta, attack_pct, decay_pct, sustain_level, release_pct
+                )
+            # Y channel: same waveform at different frequency
+            y_phase = carrier_freq * theta * y_ratio
+            if fm_amount > 0 and fm_freq > 0:
+                y_phase = y_phase + fm_amount * carrier_freq * np.sin(
+                    fm_freq * theta
+                )
+            sig_y = 2.0 * self._waveform(y_phase, wave) - 1.0
+            if am_amount > 0 and am_freq > 0:
+                sig_y = sig_y * am_env
+            if attack_pct > 0 or decay_pct > 0 or release_pct > 0:
+                sig_y = sig_y * self._adsr_envelope(
+                    theta, attack_pct, decay_pct, sustain_level, release_pct
+                )
+            # Fit: scale both axes uniformly
+            if fit_on:
+                peak = max(abs(sig_x).max(), abs(sig_y).max())
+                if peak > 0:
+                    sig_x = sig_x / peak
+                    sig_y = sig_y / peak
+            sig_x = sig_x * final_scale
+            sig_y = sig_y * final_scale
+            x = cx + sig_x * half_w
+            y = cy + sig_y * half_h
         else:  # Polar
             x = cx + r * np.cos(theta)
             y = cy + r * np.sin(theta)

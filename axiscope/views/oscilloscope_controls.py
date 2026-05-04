@@ -54,7 +54,6 @@ class OscilloscopeControls(QWidget):
     """
 
     params_changed = Signal(dict)
-    save_svg_clicked = Signal()
 
     def __init__(self, tool: BaseTool, parent: QWidget | None = None):
         super().__init__(parent)
@@ -147,11 +146,6 @@ class OscilloscopeControls(QWidget):
         )
         self._play_btn.clicked.connect(self._on_play)
         btn_row.addWidget(self._play_btn)
-
-        save_btn = QPushButton("Save SVG")
-        save_btn.setFixedWidth(90)
-        save_btn.clicked.connect(self.save_svg_clicked)
-        btn_row.addWidget(save_btn)
 
         btn_row.addStretch()
         root.addLayout(btn_row)
