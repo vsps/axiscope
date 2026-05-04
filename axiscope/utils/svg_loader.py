@@ -82,17 +82,13 @@ def load_svg(
     xform.scale(scale, scale)
     xform.translate(-content_bbox.center().x(), -content_bbox.center().y())
 
-    pen_mm = QPen(Qt.black, stroke_mm)
-    pen_mm.setCosmetic(False)
-
     result: list[QPainterPath] = []
     for path in raw_paths:
         if path.isEmpty():
             continue
         mapped = xform.map(path)
-        stroked = _stroke_path(mapped, pen_mm)
-        if not stroked.isEmpty():
-            result.append(stroked)
+        if not mapped.isEmpty():
+            result.append(mapped)
 
     return result
 
