@@ -109,6 +109,16 @@ class OscilloscopeTool(BaseTool):
                 decimals=0,
                 suffix=" %",
             ),
+            ControlDef(
+                key="offset",
+                label="Offset",
+                default=0.0,
+                minimum=-100.0,
+                maximum=100.0,
+                step=1.0,
+                decimals=0,
+                suffix=" %",
+            ),
             # ── Line 2: ADSR ──────────────────────────────────────
             ControlDef(
                 key="bypass_adsr",
@@ -332,6 +342,9 @@ class OscilloscopeTool(BaseTool):
         if r_max > r_min:
             r = (r - r_min) / (r_max - r_min)  # [0, 1]
         r = 2.0 * r - 1.0  # [-1, 1]
+        offset_pct = master.get("offset", 0.0) / 100.0
+        if offset_pct != 0:
+            r = r + offset_pct
 
         # ---- Fit & scale ---------------------------------------------
         fit_on = int(master.get("fit", 1)) == 1

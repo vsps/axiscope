@@ -16,17 +16,20 @@ from PySide6.QtWidgets import (
 
 from axiscope.tools.base_tool import BaseTool
 
+WIDGET_W = 95
+
 # Grid layout: each row is (label, [keys...])
 GRID_ROWS = [
     (
         "SIGNAL",
         [
-            "carrier_freq",
             "carrier_wave",
+            "carrier_freq",
             "fm_freq",
             "fm_amount",
             "am_freq",
             "am_amount",
+            "offset",
         ],
     ),
     ("ADSR", ["bypass_adsr", "attack", "decay", "sustain", "release"]),
@@ -35,6 +38,7 @@ GRID_ROWS = [
         [
             "mode",
             "y_ratio",
+            "sweep",
             "duration",
             "samples_per_rev",
             "fit",
@@ -52,6 +56,8 @@ class _ShiftDoubleSpinBox(QDoubleSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSingleStep(1.0)
+        self.setFixedWidth(WIDGET_W)
+        self.setAlignment(Qt.AlignLeft)
 
     def _mult(self) -> int:
         from PySide6.QtWidgets import QApplication
@@ -72,6 +78,8 @@ class _ShiftIntSpinBox(QSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSingleStep(1)
+        self.setFixedWidth(WIDGET_W)
+        self.setAlignment(Qt.AlignLeft)
 
     def _mult(self) -> int:
         from PySide6.QtWidgets import QApplication
@@ -172,14 +180,14 @@ class OscilloscopeControls(QWidget):
         self._play_btn.setFixedWidth(90)
         self._play_btn.setStyleSheet(
             "QPushButton { background: #2a6030; border: 1px solid #4a8; "
-            "color: #cfc; }"
+            "color: #cfc; font-size: 12px; }"
             "QPushButton:hover { background: #357040; }"
             "QPushButton:pressed { background: #408050; }"
             "QPushButton:disabled { background: #333; border-color: #555; "
             "color: #666; }"
         )
         self._play_btn.clicked.connect(self._on_play)
-        grid.addWidget(self._play_btn, 3, 2)
+        grid.addWidget(self._play_btn, 2, 9)
 
         self._update_y_ratio_visible()
 
