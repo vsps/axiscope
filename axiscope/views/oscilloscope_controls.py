@@ -2,7 +2,8 @@
 
 Line 1 — SIGNAL : carrier Hz / wave / FM Hz / FM % / AM Hz / AM %
 Line 2 — ADSR   : attack % / decay % / sustain % / release %
-Line 3 — RENDER : dur / smp/rev / fit / scale / cx% / cy% / [▶ Play]
+Line 3 — RENDER : mode / y-ratio / dur / smp/rev / fit / scale / cx% / cy%
+         [▶ Play]  [Save SVG]
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -21,6 +23,29 @@ from PySide6.QtWidgets import (
 
 from axiscope.tools.base_tool import BaseTool
 
+# Key order for each labelled row (must match ControlDef keys in the tool)
+ROW_KEYS: dict[str, list[str]] = {
+    "SIGNAL": [
+        "carrier_freq",
+        "carrier_wave",
+        "fm_freq",
+        "fm_amount",
+        "am_freq",
+        "am_amount",
+    ],
+    "ADSR": ["attack", "decay", "sustain", "release"],
+    "RENDER": [
+        "mode",
+        "y_ratio",
+        "duration",
+        "samples_per_rev",
+        "fit",
+        "final_scale",
+        "center_x",
+        "center_y",
+    ],
+}
+
 
 class OscilloscopeControls(QWidget):
     """Three-row custom control panel for the Oscilloscope tool.
@@ -29,43 +54,22 @@ class OscilloscopeControls(QWidget):
     """
 
     params_changed = Signal(dict)
+    save_svg_clicked = Signal()
 
     def __init__(self, tool: BaseTool, parent: QWidget | None = None):
         super().__init__(parent)
         self._tool = tool
         self._widgets: dict[str, QWidget] = {}
+        self._y_ratio_label: QLabel | None = None
+        self._y_ratio_widget: QWidget | None = None
         self._play_btn: QPushButton | None = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 4, 8, 4)
         root.setSpacing(2)
 
-        # -- Row labels -------------------------------------------------
-        for label, keys in [
-            (
-                "SIGNAL",
-                [
-                    "carrier_freq",
-                    "carrier_wave",
-                    "fm_freq",
-                    "fm_amount",
-                    "am_freq",
-                    "am_amount",
-                ],
-            ),
-            ("ADSR", ["attack", "decay", "sustain", "release"]),
-            (
-                "RENDER",
-                [
-                    "duration",
-                    "samples_per_rev",
-                    "fit",
-                    "final_scale",
-                    "center_x",
-                    "center_y",
-                ],
-            ),
-        ]:
+        # -- Build each labelled row ------------------------------------
+        for label, keys in ROW_KEYS.items():
             row = QHBoxLayout()
             row.setSpacing(8)
 
@@ -91,6 +95,9 @@ class OscilloscopeControls(QWidget):
                     w.addItems(ctrl.choices)
                     w.setCurrentIndex(int(defaults.get(ctrl.key, 0)))
                     w.currentIndexChanged.connect(self._emit)
+                    # Show/hide y_ratio when Mode changes
+                    if ctrl.key == "mode":
+                        w.currentIndexChanged.connect(self._update_y_ratio_visible)
                 elif ctrl.kind == "int":
                     w = QSpinBox()
                     w.setRange(int(ctrl.minimum), int(ctrl.maximum))
@@ -112,13 +119,22 @@ class OscilloscopeControls(QWidget):
                 self._widgets[ctrl.key] = w
                 row.addWidget(w)
 
+                # Track the y_ratio label+widget pair for show/hide
+                if ctrl.key == "y_ratio":
+                    self._y_ratio_label = row.itemAt(row.count() - 2).widget()
+                    self._y_ratio_widget = w
+
             row.addStretch()
             root.addLayout(row)
 
-        # -- Play button ------------------------------------------------
-        play_row = QHBoxLayout()
-        play_row.setSpacing(8)
-        play_row.addStretch()
+        # Initial visibility for y_ratio
+        self._update_y_ratio_visible()
+
+        # -- Action buttons ---------------------------------------------
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        btn_row.addStretch()
+
         self._play_btn = QPushButton("\u25b6 Play")
         self._play_btn.setFixedWidth(90)
         self._play_btn.setStyleSheet(
@@ -130,9 +146,15 @@ class OscilloscopeControls(QWidget):
             "color: #666; }"
         )
         self._play_btn.clicked.connect(self._on_play)
-        play_row.addWidget(self._play_btn)
-        play_row.addStretch()
-        root.addLayout(play_row)
+        btn_row.addWidget(self._play_btn)
+
+        save_btn = QPushButton("Save SVG")
+        save_btn.setFixedWidth(90)
+        save_btn.clicked.connect(self.save_svg_clicked)
+        btn_row.addWidget(save_btn)
+
+        btn_row.addStretch()
+        root.addLayout(btn_row)
 
         # Check sounddevice availability
         try:
@@ -152,6 +174,17 @@ class OscilloscopeControls(QWidget):
             if c.key == key:
                 return c
         return None
+
+    def _update_y_ratio_visible(self) -> None:
+        """Show Y Ratio only in Lissajous mode."""
+        mode_w = self._widgets.get("mode")
+        visible = (
+            mode_w is not None and getattr(mode_w, "currentIndex", lambda: 0)() == 1
+        )
+        if self._y_ratio_label is not None:
+            self._y_ratio_label.setVisible(visible)
+        if self._y_ratio_widget is not None:
+            self._y_ratio_widget.setVisible(visible)
 
     def _emit(self) -> None:
         self.params_changed.emit(self.current_params())

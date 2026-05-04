@@ -142,6 +142,8 @@ class MainWindow(QMainWindow):
                 self._custom_tool_controls = custom
                 if hasattr(custom, "params_changed"):
                     custom.params_changed.connect(self._on_tool_params)
+                if hasattr(custom, "save_svg_clicked"):
+                    custom.save_svg_clicked.connect(self._on_save_svg)
                 self._tool_controls_container_layout.addWidget(custom)
             else:
                 self._tool_controls = ToolControlsPanel()
@@ -279,6 +281,7 @@ class MainWindow(QMainWindow):
 
     def _setup_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+O"), self, self._on_load_svg)
+        QShortcut(QKeySequence("Ctrl+S"), self, self._on_save_svg)
         QShortcut(QKeySequence("Ctrl+P"), self, self._on_plot)
         QShortcut(QKeySequence("Ctrl+M"), self, self._on_toggle_motors)
         QShortcut(QKeySequence("Ctrl+Up"), self, self._on_pen_up)
@@ -299,6 +302,66 @@ class MainWindow(QMainWindow):
     def _on_escape(self) -> None:
         if self._active_tool is not None:
             self._toolbar._tool_combo.setCurrentText("None")
+
+    def _on_save_svg(self) -> None:
+        paths = self._canvas.preview_paths()
+        if not paths:
+            self._status_bar.set_status_text("Nothing to save")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save SVG", "output.svg", "SVG Files (*.svg)"
+        )
+        if not path:
+            return
+        try:
+            self._export_svg(paths, path)
+            self._status_bar.set_status_text(
+                f"Saved: {path.split('/')[-1].split(chr(92))[-1]}"
+            )
+        except Exception as exc:
+            self._status_bar.set_status_text(f"Save error: {exc}")
+
+    def _export_svg(self, paths: list[QPainterPath], filepath: str) -> None:
+        """Write QPainterPath list to an SVG file."""
+        paper = PaperSize.from_name(self._toolbar.current_paper())
+        w_mm, h_mm = paper.display_width, paper.display_height
+
+        lines: list[str] = [
+            '<?xml version="1.0" encoding="UTF-8"?>',
+            f'<svg xmlns="http://www.w3.org/2000/svg"',
+            f'     width="{w_mm}mm" height="{h_mm}mm"',
+            f'     viewBox="{-w_mm / 2} {-h_mm / 2} {w_mm} {h_mm}">',
+        ]
+        for p in paths:
+            d = self._path_to_svg_d(p)
+            if d:
+                lines.append(
+                    f'  <path d="{d}" fill="none" stroke="black" '
+                    f'stroke-width="1" stroke-linecap="round" '
+                    f'stroke-linejoin="round"/>'
+                )
+        lines.append("</svg>")
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+    @staticmethod
+    def _path_to_svg_d(path: QPainterPath) -> str:
+        """Convert a QPainterPath to an SVG path-data string."""
+        parts: list[str] = []
+        n = path.elementCount()
+        for i in range(n):
+            e = path.elementAt(i)
+            if e.isMoveTo():
+                parts.append(f"M {e.x:.3f} {e.y:.3f}")
+            elif e.isLineTo():
+                parts.append(f"L {e.x:.3f} {e.y:.3f}")
+            elif e.isCurveTo():
+                parts.append(
+                    f"C {e.x:.3f} {e.y:.3f} "
+                    f"{path.elementAt(i + 1).x:.3f} {path.elementAt(i + 1).y:.3f} "
+                    f"{path.elementAt(i + 2).x:.3f} {path.elementAt(i + 2).y:.3f}"
+                )
+        return " ".join(parts)
 
     # =================================================================
     # Status bar actions

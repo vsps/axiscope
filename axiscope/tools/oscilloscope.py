@@ -152,6 +152,27 @@ class OscilloscopeTool(BaseTool):
             ),
             # ── Line 3: Render ────────────────────────────────────
             ControlDef(
+                key="mode",
+                label="Mode",
+                default=0,
+                minimum=0,
+                maximum=1,
+                step=1,
+                decimals=0,
+                kind="choice",
+                choices=["Polar", "Lissajous"],
+            ),
+            ControlDef(
+                key="y_ratio",
+                label="Y Ratio",
+                default=2.0,
+                minimum=1.0,
+                maximum=10.0,
+                step=0.5,
+                decimals=1,
+                suffix=" :1",
+            ),
+            ControlDef(
                 key="duration",
                 label="Dur",
                 default=3.0,
@@ -286,9 +307,17 @@ class OscilloscopeTool(BaseTool):
         final_scale = master.get("final_scale", 100.0) / 100.0
         r = r * final_scale
 
-        # ---- Polar → Cartesian ---------------------------------------
-        x = cx + r * np.cos(theta)
-        y = cy + r * np.sin(theta)
+        # ---- Polar or Lissajous → Cartesian --------------------------
+        mode = int(master.get("mode", 0))
+        y_ratio = master.get("y_ratio", 2.0)
+        if mode == 1:  # Lissajous (X-Y)
+            half_w = paper_w / 2 * 0.95
+            half_h = paper_h / 2 * 0.95
+            x = cx + (r - 0.5) * 2 * half_w  # r [0,1] → [-half_w, +half_w]
+            y = cy + (r - 0.5) * 2 * half_h * np.sin(theta * y_ratio)
+        else:  # Polar
+            x = cx + r * np.cos(theta)
+            y = cy + r * np.sin(theta)
 
         path = QPainterPath()
         path.moveTo(QPointF(x[0], y[0]))
