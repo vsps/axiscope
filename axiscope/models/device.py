@@ -1,21 +1,17 @@
-"""AxiDraw device detection and EBB serial communication."""
+"""AxiDraw device — wraps the AxiDraw Python API."""
 
 from __future__ import annotations
-
-from dataclasses import dataclass
 
 import serial.tools.list_ports
 from axidrawinternal.axidraw import AxiDraw
 from PySide6.QtCore import QObject, Signal
 
-# -- EBB constants ----------------------------------------------------
 EBB_VID = 0x04D8
 EBB_PID = 0xFD92
-EBB_BAUD = 115200
-EBB_TIMEOUT = 1.0
-
-# Patterns that identify an AxiDraw / EBB in the port description
 _EBB_KEYWORDS = ("ubw", "eibotboard", "axidraw", "ebb", "ei bot")
+NUDGE_MM = 6.35  # 0.25 inch
+
+from dataclasses import dataclass
 
 
 @dataclass
@@ -27,8 +23,6 @@ class DeviceInfo:
 
 
 class DeviceModel(QObject):
-    """Wraps the AxiDraw Python API for motor, pen and plot control."""
-
     connected_changed = Signal(bool)
     position_changed = Signal(float, float)
     info_changed = Signal()
@@ -38,13 +32,11 @@ class DeviceModel(QObject):
         self._connected = False
         self._info = DeviceInfo()
         self._ad = AxiDraw()
-        self._ser = None  # raw serial for SM commands
-        self._x: float | None = None
-        self._y: float | None = None
+        self._x: float = 0.0
+        self._y: float = 0.0
         self._motor_enabled = False
         self._pen_raised = True
 
-    # -- properties ----------------------------------------------------
     @property
     def connected(self) -> bool:
         return self._connected
@@ -70,20 +62,17 @@ class DeviceModel(QObject):
         return self._pen_raised
 
     @property
-    def x(self) -> float | None:
+    def x(self) -> float:
         return self._x
 
     @property
-    def y(self) -> float | None:
+    def y(self) -> float:
         return self._y
 
-    # -- scanning ------------------------------------------------------
     @staticmethod
     def scan_ports() -> list[DeviceInfo]:
-        """Return a list of detected AxiDraw / EBB devices."""
         found: list[DeviceInfo] = []
         for pi in serial.tools.list_ports.comports():
-            # Match by VID/PID first (most reliable)
             if pi.vid == EBB_VID and pi.pid == EBB_PID:
                 found.append(
                     DeviceInfo(
@@ -93,8 +82,6 @@ class DeviceModel(QObject):
                     )
                 )
                 continue
-
-            # Fallback: match by description keywords
             desc_lower = (pi.description or "").lower()
             if any(kw in desc_lower for kw in _EBB_KEYWORDS):
                 found.append(
@@ -106,136 +93,114 @@ class DeviceModel(QObject):
                 )
         return found
 
-    # -- connection ----------------------------------------------------
     def connect(self, port: str) -> bool:
-        """Open serial connection to the EBB on *port* and query firmware."""
         if self._connected:
             self.disconnect()
+        # Force-close any stale handle on this port
+        try:
+            import serial as _ser
 
+            s = _ser.Serial(port=port, baudrate=115200, timeout=0.1)
+            s.close()
+        except Exception:
+            pass
         self._ad.options.port = port
         try:
             self._ad.serial_connect()
-            import serial as _ser
-            self._ser = _ser.Serial(port=port, baudrate=EBB_BAUD, timeout=1.0,
-                                    write_timeout=1.0)
         except Exception as exc:
-            print(f"[DeviceModel] Failed to open {port}: {exc}")
+            print(f"[DeviceModel] Connect failed: {exc}")
             return False
-
-        # Query firmware version
-        fw = self._ebb_command("V\r")
-        model = _guess_model(self._info.description or fw)
-
-        self._info = DeviceInfo(
-            port=port,
-            model=model,
-            firmware=fw.strip() if fw else "unknown",
-            description=self._info.description,
-        )
+        self._ad.initialize_options()
+        self._ad.step_scale = 2.0 * self._ad.params.native_res_factor
+        self._ad.speed_pendown = self._ad.options.speed_pendown
+        self._ad.speed_penup = self._ad.options.speed_penup
+        self._info = DeviceInfo(port=port, model=_guess_model(""))
         self._connected = True
         self._motor_enabled = False
         self._pen_raised = True
+        self._x, self._y = 0.0, 0.0
         self.connected_changed.emit(True)
         self.info_changed.emit()
         return True
 
     def disconnect(self) -> None:
-        """Close the serial connection."""
-        if self._ser and self._ser.is_open:
-            try:
-                # Disable motors before closing
-                self._ebb_command("EM,0\r")
-            except Exception:
-                pass
-            self._ser.close()
-        self._ser = None
+        try:
+            self._ad.disconnect()
+        except Exception:
+            pass
         self._connected = False
         self._motor_enabled = False
-        self._pen_raised = True
         self._info = DeviceInfo()
         self.connected_changed.emit(False)
         self.info_changed.emit()
 
-    # -- hardware actions -----------------------------------------------
     def toggle_motors(self) -> bool:
-        """Enable/disable stepper motors. Returns new state."""
         if not self._connected:
             return False
         self._motor_enabled = not self._motor_enabled
-        cmd = "EM,1\r" if self._motor_enabled else "EM,0\r"
-        self._ebb_command(cmd)
+        self._ad.options.mode = "manual"
+        self._ad.options.manual_cmd = (
+            "enable_xy" if self._motor_enabled else "disable_xy"
+        )
+        self._ad.manual_command()
         return self._motor_enabled
 
     def toggle_pen(self) -> bool:
-        """Raise/lower pen. Returns True if pen is now raised."""
         if not self._connected:
             return True
         self._pen_raised = not self._pen_raised
-        cmd = "SP,0\r" if self._pen_raised else "SP,1\r"
-        self._ebb_command(cmd)
+        self._ad.options.mode = "manual"
+        self._ad.options.manual_cmd = "pen_up" if self._pen_raised else "pen_down"
+        self._ad.manual_command()
         return self._pen_raised
 
-
     def align(self) -> None:
-        """Disengage motors and raise pen."""
         if not self._connected:
             return
         self._ad.options.mode = "align"
-        try:
-            self._ad.setup_command()
-        except Exception:
-            pass
+        self._ad.setup_command()
         self._motor_enabled = False
         self._pen_raised = True
 
     def home(self) -> None:
-        """Walk to home position."""
         if not self._connected or not self._motor_enabled:
             return
         self._ad.options.mode = "plot"
-        try:
-            self._ad.setup_command()
-        except Exception:
-            pass
+        self._ad.setup_command()
         self._ad.go_to_position(0, 0)
         self._ad.options.mode = "align"
-        try:
-            self._ad.setup_command()
-        except Exception:
-            pass
-        self._x, self._y = 0, 0
+        self._ad.setup_command()
+        self._x, self._y = 0.0, 0.0
+
+    def nudge(self, dx_mm: float, dy_mm: float) -> None:
+        if not self._connected or not self._motor_enabled:
+            return
+        self._ad.options.mode = "plot"
+        self._ad.setup_command()
+        self._ad.go_to_position(self._x + dx_mm, self._y + dy_mm)
+        self._x += dx_mm
+        self._y += dy_mm
+        self._ad.options.mode = "align"
+        self._ad.setup_command()
 
     def setup_plot_mode(self) -> None:
         self._ad.options.mode = "plot"
         self._ad.options.pen_pos_up = 60
         self._ad.options.pen_pos_down = 30
-        try:
-            self._ad.setup_command()
-        except Exception:
-            pass
-    def query_position(self) -> tuple[float | None, float | None]:
-        """Poll current toolhead position from the EBB."""
-        # EBB doesn't natively track absolute position — we'd need to
-        # maintain our own step counter.  For now return last known.
+        self._ad.setup_command()
+
+    def plot_polyline(self, vertices: list[list[float]]) -> None:
+        self._ad.plot_polyline(vertices)
+
+    def query_position(self) -> tuple[float, float]:
         return self._x, self._y
-
-    # -- raw EBB command -----------------------------------------------
-    @property
-    def raw_serial(self):
-        return self._ser
-
-
-# -- helpers -----------------------------------------------------------
 
 
 def _guess_model(description: str) -> str:
-    """Heuristic to guess the AxiDraw model from a description string.
-    The exact model will be refined once firmware is queried."""
     if not description:
         return "AxiDraw"
     d = description.lower()
-    # Match specific model strings
-    if "axidraw v3" in d or "axidraw v3" in d:
+    if "axidraw v3" in d:
         return "AxiDraw V3"
     if "axidraw v2" in d:
         return "AxiDraw V2"
@@ -243,7 +208,4 @@ def _guess_model(description: str) -> str:
         return "AxiDraw Mini"
     if "axidraw se" in d:
         return "AxiDraw SE"
-    # EBB / UBW detected but model unknown — firmware query will refine
-    if "ebb" in d or "ubw" in d or "eibotboard" in d:
-        return "AxiDraw"
     return "AxiDraw"
