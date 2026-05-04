@@ -48,47 +48,55 @@ GRID_ROWS = [
 
 
 class _ShiftDoubleSpinBox(QDoubleSpinBox):
-    """Arrow = 1, Shift+arrow = original coarse step."""
+    """Arrow = 1, Shift+arrow = 10, Ctrl+arrow = 100."""
 
-    def __init__(self, coarse_step: float = 10.0, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._coarse = coarse_step
         self.setSingleStep(1.0)
 
     def stepBy(self, steps: int):
-        if self._shift_held():
-            super().stepBy(steps * int(self._coarse))
-        else:
-            super().stepBy(steps)
+        mult = 1
+        if self._ctrl_held():
+            mult = 100
+        elif self._shift_held():
+            mult = 10
+        super().stepBy(steps * mult)
 
     def keyPressEvent(self, event: QKeyEvent):
-        self._shift = event.modifiers() & Qt.ShiftModifier
+        self._mods = event.modifiers()
         super().keyPressEvent(event)
 
     def _shift_held(self) -> bool:
-        return getattr(self, "_shift", False)
+        return bool(getattr(self, "_mods", 0) & Qt.ShiftModifier)
+
+    def _ctrl_held(self) -> bool:
+        return bool(getattr(self, "_mods", 0) & Qt.ControlModifier)
 
 
 class _ShiftIntSpinBox(QSpinBox):
-    """Arrow = 1, Shift+arrow = original coarse step."""
+    """Arrow = 1, Shift+arrow = 10, Ctrl+arrow = 100."""
 
-    def __init__(self, coarse_step: int = 10, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._coarse = coarse_step
         self.setSingleStep(1)
 
     def stepBy(self, steps: int):
-        if self._shift_held():
-            super().stepBy(steps * self._coarse)
-        else:
-            super().stepBy(steps)
+        mult = 1
+        if self._ctrl_held():
+            mult = 100
+        elif self._shift_held():
+            mult = 10
+        super().stepBy(steps * mult)
 
     def keyPressEvent(self, event: QKeyEvent):
-        self._shift = event.modifiers() & Qt.ShiftModifier
+        self._mods = event.modifiers()
         super().keyPressEvent(event)
 
     def _shift_held(self) -> bool:
-        return getattr(self, "_shift", False)
+        return bool(getattr(self, "_mods", 0) & Qt.ShiftModifier)
+
+    def _ctrl_held(self) -> bool:
+        return bool(getattr(self, "_mods", 0) & Qt.ControlModifier)
 
 
 class OscilloscopeControls(QWidget):
@@ -149,14 +157,14 @@ class OscilloscopeControls(QWidget):
                     if ctrl.key == "mode":
                         w.currentIndexChanged.connect(self._update_y_ratio_visible)
                 elif ctrl.kind == "int":
-                    w = _ShiftIntSpinBox(coarse_step=int(ctrl.step))
+                    w = _ShiftIntSpinBox()
                     w.setRange(int(ctrl.minimum), int(ctrl.maximum))
                     w.setValue(int(defaults.get(ctrl.key, 0)))
                     w.setSuffix(ctrl.suffix)
                     w.setFixedWidth(100)
                     w.valueChanged.connect(lambda _v: self._emit())
                 else:
-                    w = _ShiftDoubleSpinBox(coarse_step=ctrl.step)
+                    w = _ShiftDoubleSpinBox()
                     w.setRange(ctrl.minimum, ctrl.maximum)
                     w.setDecimals(ctrl.decimals)
                     w.setValue(defaults.get(ctrl.key, 0.0))

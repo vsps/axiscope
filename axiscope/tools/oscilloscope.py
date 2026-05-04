@@ -184,6 +184,16 @@ class OscilloscopeTool(BaseTool):
                 suffix=" :1",
             ),
             ControlDef(
+                key="sweep",
+                label="Sweep",
+                default=20.0,
+                minimum=1.0,
+                maximum=20000.0,
+                step=10.0,
+                decimals=0,
+                suffix=" Hz",
+            ),
+            ControlDef(
                 key="duration",
                 label="Dur",
                 default=3.0,
@@ -356,8 +366,10 @@ class OscilloscopeTool(BaseTool):
             x = cx + sig_x * half_scale
             y = cy + sig_y * half_scale
         else:  # Polar
-            x = cx + r * np.cos(theta)
-            y = cy + r * np.sin(theta)
+            sweep = master.get("sweep", 20.0)
+            sweep_theta = theta * (sweep / carrier_freq) if carrier_freq > 0 else theta
+            x = cx + r * np.cos(sweep_theta)
+            y = cy + r * np.sin(sweep_theta)
 
         path = QPainterPath()
         path.moveTo(QPointF(x[0], y[0]))
