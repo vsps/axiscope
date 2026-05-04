@@ -285,26 +285,35 @@ class OscilloscopeTool(BaseTool):
         # ---- theta array ---------------------------------------------
         theta = np.linspace(0, 2 * np.pi * duration, total_samples)
 
-        # ---- FM ------------------------------------------------------
+        # ---- Sweep & effective frequencies --------------------------
         carrier_freq = master.get("carrier_freq", 440.0)
-        fm_freq = master.get("fm_freq", 100.0)
+        sweep = master.get("sweep", 20.0)
+        if sweep > 0:
+            eff_carrier = carrier_freq / sweep
+            eff_fm = master.get("fm_freq", 100.0) / sweep
+            eff_am = master.get("am_freq", 10.0) / sweep
+        else:
+            eff_carrier = carrier_freq
+            eff_fm = master.get("fm_freq", 100.0)
+            eff_am = master.get("am_freq", 10.0)
+
+        # ---- FM ------------------------------------------------------
         fm_amount = master.get("fm_amount", 0.0) / 100.0
-        if fm_amount > 0 and fm_freq > 0:
-            phase = carrier_freq * theta + fm_amount * carrier_freq * np.sin(
-                fm_freq * theta
+        if fm_amount > 0 and eff_fm > 0:
+            phase = eff_carrier * theta + fm_amount * eff_carrier * np.sin(
+                eff_fm * theta
             )
         else:
-            phase = carrier_freq * theta
+            phase = eff_carrier * theta
 
         # ---- Carrier waveform ----------------------------------------
         wave = int(master.get("carrier_wave", 0))
         carrier = self._waveform(phase, wave)  # [0, 1]
 
         # ---- AM ------------------------------------------------------
-        am_freq = master.get("am_freq", 10.0)
         am_amount = master.get("am_amount", 0.0) / 100.0
-        if am_amount > 0 and am_freq > 0:
-            am_env = 1.0 + am_amount * np.sin(am_freq * theta)
+        if am_amount > 0 and eff_am > 0:
+            am_env = 1.0 + am_amount * np.sin(eff_am * theta)
             r = carrier * am_env
         else:
             r = carrier
@@ -338,18 +347,18 @@ class OscilloscopeTool(BaseTool):
         if mode == 1:  # Lissajous - true X-Y oscilloscope
             # X channel: bipolar carrier [-1, +1] with AM + ADSR
             sig_x = 2.0 * carrier - 1.0
-            if am_amount > 0 and am_freq > 0:
+            if am_amount > 0 and eff_am > 0:
                 sig_x = sig_x * am_env
             if not bypass_adsr and (attack_pct > 0 or decay_pct > 0 or release_pct > 0):
                 sig_x = sig_x * self._adsr_envelope(
                     theta, attack_pct, decay_pct, sustain_level, release_pct
                 )
             # Y channel: same waveform at different frequency, 90° out of phase
-            y_phase = carrier_freq * theta * y_ratio + np.pi / 2
-            if fm_amount > 0 and fm_freq > 0:
-                y_phase = y_phase + fm_amount * carrier_freq * np.sin(fm_freq * theta)
+            y_phase = eff_carrier * theta * y_ratio + np.pi / 2
+            if fm_amount > 0 and eff_fm > 0:
+                y_phase = y_phase + fm_amount * eff_carrier * np.sin(eff_fm * theta)
             sig_y = 2.0 * self._waveform(y_phase, wave) - 1.0
-            if am_amount > 0 and am_freq > 0:
+            if am_amount > 0 and eff_am > 0:
                 sig_y = sig_y * am_env
             if not bypass_adsr and (attack_pct > 0 or decay_pct > 0 or release_pct > 0):
                 sig_y = sig_y * self._adsr_envelope(
@@ -367,9 +376,13 @@ class OscilloscopeTool(BaseTool):
             y = cy + sig_y * half_scale
         else:  # Polar
             sweep = master.get("sweep", 20.0)
-            sweep_theta = theta * (sweep / carrier_freq) if carrier_freq > 0 else theta
-            x = cx + r * np.cos(sweep_theta)
-            y = cy + r * np.sin(sweep_theta)
+            if sweep > 0 and carrier_freq > 0:
+                ratio = carrier_freq / sweep  # petals per revolution
+            else:
+                ratio = 1.0
+            polar_phase = ratio * theta
+            x = cx + r * np.cos(polar_phase)
+            y = cy + r * np.sin(polar_phase)
 
         path = QPainterPath()
         path.moveTo(QPointF(x[0], y[0]))
