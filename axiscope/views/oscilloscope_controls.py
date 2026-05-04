@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -48,55 +47,43 @@ GRID_ROWS = [
 
 
 class _ShiftDoubleSpinBox(QDoubleSpinBox):
-    """Arrow = 1, Shift+arrow = 10, Ctrl+arrow = 100."""
+    """Arrow/wheel = 1, Shift = 10, Ctrl = 100.  Reads modifiers live."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSingleStep(1.0)
 
+    def _mult(self) -> int:
+        from PySide6.QtWidgets import QApplication
+        mods = QApplication.keyboardModifiers()
+        if mods & Qt.ControlModifier:
+            return 100
+        if mods & Qt.ShiftModifier:
+            return 10
+        return 1
+
     def stepBy(self, steps: int):
-        mult = 1
-        if self._ctrl_held():
-            mult = 100
-        elif self._shift_held():
-            mult = 10
-        super().stepBy(steps * mult)
-
-    def keyPressEvent(self, event: QKeyEvent):
-        self._mods = event.modifiers()
-        super().keyPressEvent(event)
-
-    def _shift_held(self) -> bool:
-        return bool(getattr(self, "_mods", 0) & Qt.ShiftModifier)
-
-    def _ctrl_held(self) -> bool:
-        return bool(getattr(self, "_mods", 0) & Qt.ControlModifier)
+        super().stepBy(steps * self._mult())
 
 
 class _ShiftIntSpinBox(QSpinBox):
-    """Arrow = 1, Shift+arrow = 10, Ctrl+arrow = 100."""
+    """Arrow/wheel = 1, Shift = 10, Ctrl = 100.  Reads modifiers live."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSingleStep(1)
 
+    def _mult(self) -> int:
+        from PySide6.QtWidgets import QApplication
+        mods = QApplication.keyboardModifiers()
+        if mods & Qt.ControlModifier:
+            return 100
+        if mods & Qt.ShiftModifier:
+            return 10
+        return 1
+
     def stepBy(self, steps: int):
-        mult = 1
-        if self._ctrl_held():
-            mult = 100
-        elif self._shift_held():
-            mult = 10
-        super().stepBy(steps * mult)
-
-    def keyPressEvent(self, event: QKeyEvent):
-        self._mods = event.modifiers()
-        super().keyPressEvent(event)
-
-    def _shift_held(self) -> bool:
-        return bool(getattr(self, "_mods", 0) & Qt.ShiftModifier)
-
-    def _ctrl_held(self) -> bool:
-        return bool(getattr(self, "_mods", 0) & Qt.ControlModifier)
+        super().stepBy(steps * self._mult())
 
 
 class OscilloscopeControls(QWidget):
