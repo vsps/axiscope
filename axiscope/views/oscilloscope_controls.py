@@ -1,10 +1,4 @@
-"""Custom 3-line controls panel for the Oscilloscope tool.
-
-Line 1 — SIGNAL : carrier Hz / wave / FM Hz / FM % / AM Hz / AM %
-Line 2 — ADSR   : attack % / decay % / sustain % / release %
-Line 3 — RENDER : mode / y-ratio / dur / smp/rev / fit / scale / cx% / cy%
-         [▶ Play]  [Save SVG]
-"""
+"""Custom grid controls panel for the Oscilloscope tool."""
 
 from __future__ import annotations
 
@@ -12,8 +6,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
-    QFileDialog,
-    QHBoxLayout,
+    QGridLayout,
     QLabel,
     QPushButton,
     QSpinBox,
@@ -23,32 +16,38 @@ from PySide6.QtWidgets import (
 
 from axiscope.tools.base_tool import BaseTool
 
-# Key order for each labelled row (must match ControlDef keys in the tool)
-ROW_KEYS: dict[str, list[str]] = {
-    "SIGNAL": [
-        "carrier_freq",
-        "carrier_wave",
-        "fm_freq",
-        "fm_amount",
-        "am_freq",
-        "am_amount",
-    ],
-    "ADSR": ["attack", "decay", "sustain", "release"],
-    "RENDER": [
-        "mode",
-        "y_ratio",
-        "duration",
-        "samples_per_rev",
-        "fit",
-        "final_scale",
-        "center_x",
-        "center_y",
-    ],
-}
+# Grid layout: each row is (label, [keys...])
+GRID_ROWS = [
+    (
+        "SIGNAL",
+        [
+            "carrier_freq",
+            "carrier_wave",
+            "fm_freq",
+            "fm_amount",
+            "am_freq",
+            "am_amount",
+        ],
+    ),
+    ("ADSR", ["bypass_adsr", "attack", "decay", "sustain", "release"]),
+    (
+        "RENDER",
+        [
+            "mode",
+            "y_ratio",
+            "duration",
+            "samples_per_rev",
+            "fit",
+            "final_scale",
+            "center_x",
+            "center_y",
+        ],
+    ),
+]
 
 
 class OscilloscopeControls(QWidget):
-    """Three-row custom control panel for the Oscilloscope tool.
+    """Grid-based control panel for the Oscilloscope tool.
 
     Emits ``params_changed(dict)`` whenever any value changes.
     """
@@ -59,42 +58,49 @@ class OscilloscopeControls(QWidget):
         super().__init__(parent)
         self._tool = tool
         self._widgets: dict[str, QWidget] = {}
-        self._y_ratio_label: QLabel | None = None
-        self._y_ratio_widget: QWidget | None = None
+        self._y_ratio_cell: QWidget | None = None
+        self._adsr_cells: list[QWidget] = []
         self._play_btn: QPushButton | None = None
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(8, 4, 8, 4)
-        root.setSpacing(2)
+        grid = QGridLayout(self)
+        grid.setContentsMargins(8, 4, 8, 4)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(3)
 
-        # -- Build each labelled row ------------------------------------
-        for label, keys in ROW_KEYS.items():
-            row = QHBoxLayout()
-            row.setSpacing(8)
+        defaults = {c.key: c.default for c in tool.controls}
 
+        for row_idx, (label, keys) in enumerate(GRID_ROWS):
+            # Row label in column 0
             lbl = QLabel(label)
             lbl.setStyleSheet(
                 "background: transparent; font-weight: bold; color: #aaa;"
                 "font-size: 11px;"
             )
-            lbl.setFixedWidth(52)
-            row.addWidget(lbl)
+            grid.addWidget(lbl, row_idx, 0)
 
-            for key in keys:
+            for col_idx, key in enumerate(keys):
                 ctrl = self._find_ctrl(key)
                 if ctrl is None:
                     continue
 
-                defaults = {c.key: c.default for c in tool.controls}
+                # Build a stacked cell: header label above widget
+                cell = QWidget()
+                cell.setStyleSheet("background: transparent;")
+                cell_lay = QVBoxLayout(cell)
+                cell_lay.setContentsMargins(0, 0, 0, 0)
+                cell_lay.setSpacing(1)
 
-                row.addWidget(QLabel(ctrl.label[:7]))
+                header = QLabel(ctrl.label)
+                header.setStyleSheet(
+                    "background: transparent; font-size: 10px; color: #888;"
+                )
+                cell_lay.addWidget(header)
 
                 if ctrl.kind == "choice":
                     w: QComboBox | QDoubleSpinBox | QSpinBox = QComboBox()
                     w.addItems(ctrl.choices)
                     w.setCurrentIndex(int(defaults.get(ctrl.key, 0)))
                     w.currentIndexChanged.connect(self._emit)
-                    # Show/hide y_ratio when Mode changes
                     if ctrl.key == "mode":
                         w.currentIndexChanged.connect(self._update_y_ratio_visible)
                 elif ctrl.kind == "int":
@@ -103,7 +109,7 @@ class OscilloscopeControls(QWidget):
                     w.setSingleStep(int(ctrl.step))
                     w.setValue(int(defaults.get(ctrl.key, 0)))
                     w.setSuffix(ctrl.suffix)
-                    w.setFixedWidth(120)
+                    w.setFixedWidth(110)
                     w.valueChanged.connect(lambda _v: self._emit())
                 else:
                     w = QDoubleSpinBox()
@@ -112,28 +118,19 @@ class OscilloscopeControls(QWidget):
                     w.setDecimals(ctrl.decimals)
                     w.setValue(defaults.get(ctrl.key, 0.0))
                     w.setSuffix(ctrl.suffix)
-                    w.setFixedWidth(120)
+                    w.setFixedWidth(110)
                     w.valueChanged.connect(lambda _v: self._emit())
 
+                cell_lay.addWidget(w)
                 self._widgets[ctrl.key] = w
-                row.addWidget(w)
+                grid.addWidget(cell, row_idx, col_idx + 1)
 
-                # Track the y_ratio label+widget pair for show/hide
                 if ctrl.key == "y_ratio":
-                    self._y_ratio_label = row.itemAt(row.count() - 2).widget()
-                    self._y_ratio_widget = w
+                    self._y_ratio_cell = cell
+                if ctrl.key in ("attack", "decay", "sustain", "release"):
+                    self._adsr_cells.append(cell)
 
-            row.addStretch()
-            root.addLayout(row)
-
-        # Initial visibility for y_ratio
-        self._update_y_ratio_visible()
-
-        # -- Action buttons ---------------------------------------------
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(8)
-        btn_row.addStretch()
-
+        # Play button in row 3
         self._play_btn = QPushButton("\u25b6 Play")
         self._play_btn.setFixedWidth(90)
         self._play_btn.setStyleSheet(
@@ -145,12 +142,11 @@ class OscilloscopeControls(QWidget):
             "color: #666; }"
         )
         self._play_btn.clicked.connect(self._on_play)
-        btn_row.addWidget(self._play_btn)
+        grid.addWidget(self._play_btn, 3, 2)
 
-        btn_row.addStretch()
-        root.addLayout(btn_row)
+        self._update_y_ratio_visible()
 
-        # Check sounddevice availability
+        # Check sounddevice
         try:
             import sounddevice  # noqa: F401
 
@@ -160,7 +156,7 @@ class OscilloscopeControls(QWidget):
             self._play_btn.setEnabled(False)
             self._play_btn.setToolTip("Install 'sounddevice' for audio preview")
 
-        self.setMaximumHeight(150)
+        self.setMaximumHeight(200)
 
     # -----------------------------------------------------------------
     def _find_ctrl(self, key: str):
@@ -170,15 +166,12 @@ class OscilloscopeControls(QWidget):
         return None
 
     def _update_y_ratio_visible(self) -> None:
-        """Show Y Ratio only in Lissajous mode."""
         mode_w = self._widgets.get("mode")
         visible = (
             mode_w is not None and getattr(mode_w, "currentIndex", lambda: 0)() == 1
         )
-        if self._y_ratio_label is not None:
-            self._y_ratio_label.setVisible(visible)
-        if self._y_ratio_widget is not None:
-            self._y_ratio_widget.setVisible(visible)
+        if self._y_ratio_cell is not None:
+            self._y_ratio_cell.setVisible(visible)
 
     def _emit(self) -> None:
         self.params_changed.emit(self.current_params())
@@ -190,6 +183,10 @@ class OscilloscopeControls(QWidget):
                 result[key] = float(w.currentIndex())
             else:
                 result[key] = w.value()
+        # Grey out ADSR cells when bypassed
+        bypass = int(result.get("bypass_adsr", 1))
+        for cell in self._adsr_cells:
+            cell.setEnabled(bypass == 1)
         return result
 
     # -----------------------------------------------------------------

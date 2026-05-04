@@ -111,6 +111,17 @@ class OscilloscopeTool(BaseTool):
             ),
             # ── Line 2: ADSR ──────────────────────────────────────
             ControlDef(
+                key="bypass_adsr",
+                label="ADSR",
+                default=1,
+                minimum=0,
+                maximum=1,
+                step=1,
+                decimals=0,
+                kind="choice",
+                choices=["Off", "On"],
+            ),
+            ControlDef(
                 key="attack",
                 label="Attack",
                 default=5.0,
@@ -293,7 +304,8 @@ class OscilloscopeTool(BaseTool):
         decay_pct = master.get("decay", 10.0) / 100.0
         sustain_level = master.get("sustain", 80.0) / 100.0
         release_pct = master.get("release", 10.0) / 100.0
-        if attack_pct > 0 or decay_pct > 0 or release_pct > 0:
+        bypass_adsr = int(master.get("bypass_adsr", 1)) == 0
+        if not bypass_adsr and (attack_pct > 0 or decay_pct > 0 or release_pct > 0):
             r = r * self._adsr_envelope(
                 theta, attack_pct, decay_pct, sustain_level, release_pct
             )
@@ -317,20 +329,18 @@ class OscilloscopeTool(BaseTool):
             sig_x = 2.0 * carrier - 1.0
             if am_amount > 0 and am_freq > 0:
                 sig_x = sig_x * am_env
-            if attack_pct > 0 or decay_pct > 0 or release_pct > 0:
+            if not bypass_adsr and (attack_pct > 0 or decay_pct > 0 or release_pct > 0):
                 sig_x = sig_x * self._adsr_envelope(
                     theta, attack_pct, decay_pct, sustain_level, release_pct
                 )
             # Y channel: same waveform at different frequency
             y_phase = carrier_freq * theta * y_ratio
             if fm_amount > 0 and fm_freq > 0:
-                y_phase = y_phase + fm_amount * carrier_freq * np.sin(
-                    fm_freq * theta
-                )
+                y_phase = y_phase + fm_amount * carrier_freq * np.sin(fm_freq * theta)
             sig_y = 2.0 * self._waveform(y_phase, wave) - 1.0
             if am_amount > 0 and am_freq > 0:
                 sig_y = sig_y * am_env
-            if attack_pct > 0 or decay_pct > 0 or release_pct > 0:
+            if not bypass_adsr and (attack_pct > 0 or decay_pct > 0 or release_pct > 0):
                 sig_y = sig_y * self._adsr_envelope(
                     theta, attack_pct, decay_pct, sustain_level, release_pct
                 )
