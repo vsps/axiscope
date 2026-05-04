@@ -19,6 +19,10 @@ class StatusBar(QWidget):
     plot_clicked = Signal()
     pause_clicked = Signal()
     cancel_clicked = Signal()
+    nudge_up_clicked = Signal()
+    nudge_down_clicked = Signal()
+    nudge_left_clicked = Signal()
+    nudge_right_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,6 +63,19 @@ class StatusBar(QWidget):
         self._align_btn = QPushButton("ALIGN")
         self._align_btn.clicked.connect(self.align_clicked)
         layout.addWidget(self._align_btn)
+
+        # Nudge arrows (0.25 in)
+        for arrow, sig, tip in [
+            ("\u25B2", self.nudge_up_clicked, "Up 0.25 in"),
+            ("\u25BC", self.nudge_down_clicked, "Down 0.25 in"),
+            ("\u25C0", self.nudge_left_clicked, "Left 0.25 in"),
+            ("\u25B6", self.nudge_right_clicked, "Right 0.25 in"),
+        ]:
+            btn = QPushButton(arrow)
+            btn.setFixedSize(28, 28)
+            btn.setToolTip(tip)
+            btn.clicked.connect(sig)
+            layout.addWidget(btn)
 
         self._plot_btn = QPushButton("\u25b6 PLOT")
         self._plot_btn.setStyleSheet(

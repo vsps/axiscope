@@ -101,35 +101,3 @@ class PlotController(QObject):
             self._busy = False
             self.plot_finished.emit()
 
-    # -----------------------------------------------------------------
-    def _move_to(self, x_mm: float, y_mm: float, speed_mm_s: float) -> None:
-        """Send an SM command to move to (*x_mm*, *y_mm*) at the given speed."""
-        sx = int(round(x_mm * STEPS_PER_MM))
-        sy = int(round(y_mm * STEPS_PER_MM))
-
-        # Get current position from device tracking
-        cx = self._device._x or 0
-        cy = self._device._y or 0
-
-        dx = abs(sx - cx)
-        dy = abs(sy - cy)
-        dist_mm = math.sqrt(
-            (x_mm - cx / STEPS_PER_MM) ** 2 + (y_mm - cy / STEPS_PER_MM) ** 2
-        )
-        if dist_mm < 0.001:
-            return
-
-        dur_ms = max(MIN_SEGMENT_MS, int(dist_mm / speed_mm_s * 1000))
-        self._ebb(f"SM,{dur_ms},{sx - cx},{sy - cy}\r")
-        self._device._x, self._device._y = sx, sy
-
-    def _ebb(self, cmd: str) -> None:
-        """Send a raw command to the EBB (fire-and-forget)."""
-        if self._device._ser and self._device._ser.is_open:
-            try:
-                self._device._ser.reset_input_buffer()
-                self._device._ser.write(cmd.encode("ascii"))
-                # Small delay so EBB can process
-                time.sleep(0.005)
-            except Exception:
-                pass

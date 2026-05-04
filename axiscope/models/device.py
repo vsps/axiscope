@@ -225,20 +225,6 @@ class DeviceModel(QObject):
     def raw_serial(self):
         return self._ser
 
-    def _ebb_command(self, cmd: str) -> str:
-        """Send a raw command string to the EBB and return the response."""
-        if not self._ser or not self._ser.is_open:
-            return ""
-        try:
-            self._ser.reset_input_buffer()
-            self._ser.write(cmd.encode("ascii"))
-            time.sleep(0.02)
-            resp = self._ser.read_until(b"\r\n")
-            return resp.decode("ascii", errors="replace")
-        except (OSError, serial.SerialException) as exc:
-            print(f"[DeviceModel] EBB command '{cmd.strip()}' failed: {exc}")
-            return ""
-
 
 # -- helpers -----------------------------------------------------------
 
