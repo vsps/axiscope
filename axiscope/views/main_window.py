@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         self._plot_ctrl = PlotController(self._device, self._settings)
         self._plot_ctrl.plot_started.connect(self._on_plot_started)
         self._plot_ctrl.plot_finished.connect(self._on_plot_finished)
+        self._plot_ctrl.plot_error.connect(self._on_plot_error)
 
         self._tools: dict[str, BaseTool] = {
             "Oscilloscope": OscilloscopeTool(),
@@ -444,12 +445,16 @@ class MainWindow(QMainWindow):
         self._plot_ctrl.start_plot(paths, paper)
 
     def _on_plot_started(self) -> None:
+        self._status_bar.set_plotting(True)
         self._status_bar.set_status_text("Plotting…")
-        self._status_bar._plot_btn.setEnabled(False)
 
     def _on_plot_finished(self) -> None:
-        self._status_bar.set_status_text("Plot complete")
         self._status_bar.set_plotting(False)
+        self._status_bar.set_status_text("Plot complete")
+
+    def _on_plot_error(self, msg: str) -> None:
+        self._status_bar.set_plotting(False)
+        self._status_bar.set_status_text(f"Plot error: {msg}")
 
     # =================================================================
     # Device callbacks
