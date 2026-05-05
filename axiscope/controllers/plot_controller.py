@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtGui import QPainterPath, QTransform
 
@@ -25,24 +27,41 @@ class _PlotWorker(QObject):
         self._device = device
         self._paths = paths
         self._paper = paper
-        self._abort = abort_flag  # shared mutable flag
+        self._abort = abort_flag
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # set = not paused
+
+    def toggle_pause(self) -> None:
+        if self._pause_event.is_set():
+            self._pause_event.clear()
+        else:
+            self._pause_event.set()
+
+    @property
+    def paused(self) -> bool:
+        return not self._pause_event.is_set()
+
+    def _abort_check(self) -> bool:
+        """Blocks while paused; returns True if plot should stop."""
+        self._pause_event.wait()
+        return self._abort[0]
 
     def run(self) -> None:
         w_half = self._paper.display_width / 2
         h_half = self._paper.display_height / 2
         try:
             for path in self._paths:
-                if self._abort[0]:
+                if self._abort_check():
                     break
                 for poly in path.toSubpathPolygons(QTransform()):
-                    if self._abort[0]:
-                        break
                     if len(poly) < 2:
                         continue
                     vertices = [
                         [pt.x() + w_half, pt.y() + h_half] for pt in poly
                     ]
-                    self._device.plot_polyline(vertices)
+                    completed = self._device.plot_path(vertices, self._abort_check)
+                    if not completed:
+                        return
         except Exception as exc:
             self.error.emit(str(exc))
         finally:
@@ -53,6 +72,7 @@ class PlotController(QObject):
     plot_started = Signal()
     plot_finished = Signal()
     plot_error = Signal(str)
+    pause_state_changed = Signal(bool)  # True = paused
 
     def __init__(self, device: DeviceModel, settings: SettingsModel):
         super().__init__()
@@ -69,6 +89,13 @@ class PlotController(QObject):
 
     def abort(self) -> None:
         self._abort_flag[0] = True
+        if self._worker is not None:
+            self._worker._pause_event.set()  # unblock if paused so thread can exit
+
+    def pause(self) -> None:
+        if self._worker is not None:
+            self._worker.toggle_pause()
+            self.pause_state_changed.emit(self._worker.paused)
 
     def start_plot(self, paths: list[QPainterPath], paper: PaperSize) -> None:
         if self._busy or not self._device.connected or not paths:

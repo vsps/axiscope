@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
@@ -41,6 +41,9 @@ class PlotSettings:
 
     # Device
     axidraw_model: int = 5  # 1=V2/V3, 2=V3/A3, 3=V3XLX, 4=Mini, 5=SE/A1, 6=SE/A2, 7=V3/B6
+
+    # Tool state
+    oscilloscope_params: dict = field(default_factory=dict)
 
 
 class SettingsModel(QObject):

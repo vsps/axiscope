@@ -220,6 +220,18 @@ class OscilloscopeControls(QWidget):
     def _emit(self) -> None:
         self.params_changed.emit(self.current_params())
 
+    def set_params(self, params: dict) -> None:
+        for key, w in self._widgets.items():
+            if key not in params:
+                continue
+            w.blockSignals(True)
+            if isinstance(w, QComboBox):
+                w.setCurrentIndex(int(params[key]))
+            else:
+                w.setValue(params[key])
+            w.blockSignals(False)
+        self._update_y_ratio_visible()
+
     def current_params(self) -> dict[str, float]:
         result: dict[str, float] = {}
         for key, w in self._widgets.items():

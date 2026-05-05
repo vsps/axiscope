@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         self._plot_ctrl.plot_started.connect(self._on_plot_started)
         self._plot_ctrl.plot_finished.connect(self._on_plot_finished)
         self._plot_ctrl.plot_error.connect(self._on_plot_error)
+        self._plot_ctrl.pause_state_changed.connect(self._on_pause_state_changed)
 
         self._tools: dict[str, BaseTool] = {
             "Oscilloscope": OscilloscopeTool(),
@@ -155,6 +156,9 @@ class MainWindow(QMainWindow):
                 self._custom_tool_controls = custom
                 if hasattr(custom, "params_changed"):
                     custom.params_changed.connect(self._on_tool_params)
+                saved = self._settings.data.oscilloscope_params
+                if saved and hasattr(custom, "set_params"):
+                    custom.set_params(saved)
                 self._tool_controls_container_layout.addWidget(custom)
             else:
                 self._tool_controls = ToolControlsPanel()
@@ -177,8 +181,10 @@ class MainWindow(QMainWindow):
     # Tool preview
     # =================================================================
 
-    def _on_tool_params(self, params: dict) -> None:  # noqa: ARG002
+    def _on_tool_params(self, params: dict) -> None:
         self._regenerate_tool_preview()
+        if self._active_tool is not None and self._active_tool.name == "Oscilloscope":
+            self._settings.update(oscilloscope_params=params)
 
     def _clear_tool_controls(self) -> None:
         if self._tool_controls is not None:
@@ -443,6 +449,10 @@ class MainWindow(QMainWindow):
             return
         paper = PaperSize.from_name(self._toolbar.current_paper())
         self._plot_ctrl.start_plot(paths, paper)
+
+    def _on_pause_state_changed(self, paused: bool) -> None:
+        self._status_bar.set_plotting(True, paused=paused)
+        self._status_bar.set_status_text("Paused" if paused else "Plotting…")
 
     def _on_plot_started(self) -> None:
         self._status_bar.set_plotting(True)

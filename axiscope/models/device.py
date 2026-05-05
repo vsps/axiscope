@@ -195,8 +195,27 @@ class DeviceModel(QObject):
         self._ad.options.pen_pos_down = int(down_pct)
         self._ad.pen.servo_init(self._ad)
 
+    def plot_path(self, vertices: list[list[float]], abort_check) -> bool:
+        """
+        Plot one polyline segment-by-segment so abort/pause is checked between
+        every vertex.  abort_check() blocks while paused and returns True when
+        the plot should stop.  Returns True if completed, False if aborted.
+        """
+        if self._ad is None or len(vertices) < 2:
+            return True
+        self._ad.moveto(vertices[0][0], vertices[0][1])
+        for x, y in vertices[1:]:
+            if abort_check():
+                self._ad.penup()
+                self._pen_raised = True
+                return False
+            self._ad.lineto(x, y)
+        self._ad.penup()
+        self._pen_raised = True
+        return True
+
     def plot_polyline(self, vertices: list[list[float]]) -> None:
-        """Plot a polyline: moveto first point, pen down, trace, pen up."""
+        """Plot a polyline via draw_path (no abort checking)."""
         if self._ad is not None:
             self._ad.draw_path(vertices)
 
