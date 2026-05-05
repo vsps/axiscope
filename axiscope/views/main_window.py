@@ -84,6 +84,7 @@ class MainWindow(QMainWindow):
 
         self._device.connected_changed.connect(self._on_device_connection)
         self._device.info_changed.connect(self._on_device_info)
+        self._settings.changed.connect(self._on_settings_changed)
 
         self._plot_ctrl = PlotController(self._device, self._settings)
         self._plot_ctrl.plot_started.connect(self._on_plot_started)
@@ -98,6 +99,7 @@ class MainWindow(QMainWindow):
         self._on_paper_changed("A1")
         self._setup_shortcuts()
         self._apply_theme()
+        self._canvas.set_antialiasing(self._settings.data.anti_aliasing)
 
     # =================================================================
     # Toolbar handlers
@@ -465,6 +467,9 @@ class MainWindow(QMainWindow):
         self._status_bar.set_connected(
             self._device.connected, self._device.port, self._device.model
         )
+
+    def _on_settings_changed(self) -> None:
+        self._canvas.set_antialiasing(self._settings.data.anti_aliasing)
 
     # =================================================================
     def _apply_theme(self) -> None:

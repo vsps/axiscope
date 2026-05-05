@@ -325,12 +325,20 @@ class _CanvasTab(QWidget):
         f.addRow("Grid spacing:", self._grid_spacing)
         layout.addWidget(g)
 
+        g2 = QGroupBox("Rendering")
+        f2 = QFormLayout(g2)
+        self._anti_aliasing = QCheckBox("Anti-aliasing (disable for performance)")
+        self._anti_aliasing.setChecked(settings.anti_aliasing)
+        f2.addRow(self._anti_aliasing)
+        layout.addWidget(g2)
+
         layout.addStretch()
 
     def collect(self) -> dict:
         return {
             "show_grid": self._show_grid.isChecked(),
             "grid_spacing_mm": self._grid_spacing.value(),
+            "anti_aliasing": self._anti_aliasing.isChecked(),
         }
 
 

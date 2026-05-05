@@ -33,6 +33,7 @@ class PlotSettings:
     # Canvas
     show_grid: bool = False
     grid_spacing_mm: float = 10.0
+    anti_aliasing: bool = True
 
 
 class SettingsModel(QObject):

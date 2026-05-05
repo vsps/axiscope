@@ -7,6 +7,7 @@ from PySide6.QtGui import (
     QPainter,
     QPainterPath,
     QPen,
+    QSurfaceFormat,
 )
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsScene, QGraphicsView
@@ -53,7 +54,11 @@ class CanvasView(QGraphicsView):
 
     def __init__(self, scene: QGraphicsScene, parent=None):
         super().__init__(scene, parent)
-        self.setViewport(QOpenGLWidget())
+        fmt = QSurfaceFormat()
+        fmt.setSamples(4)  # 4× MSAA
+        gl = QOpenGLWidget()
+        gl.setFormat(fmt)
+        self.setViewport(gl)
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         self.setBackgroundBrush(QBrush(BG_COLOR))
         self.setDragMode(QGraphicsView.NoDrag)
@@ -68,6 +73,13 @@ class CanvasView(QGraphicsView):
         self._paper_size: PaperSize | None = None
         self._page_item: PageOutlineItem | None = None
         self._preview_items: list[QGraphicsItem] = []
+
+    def set_antialiasing(self, enabled: bool) -> None:
+        if enabled:
+            self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        else:
+            self.setRenderHints(Qt.RenderHint(0))
+        self.viewport().update()
 
     # -----------------------------------------------------------------
     def set_paper(self, paper: PaperSize) -> None:
