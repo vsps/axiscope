@@ -93,13 +93,14 @@ class DeviceModel(QObject):
                 )
         return found
 
-    def connect(self, port: str) -> bool:
+    def connect(self, port: str, model: int = 1) -> bool:
         if self._connected:
             self.disconnect()
         ad = _pyaxidraw.AxiDraw()
         ad.interactive()
         ad.options.units = 2  # millimetres
         ad.options.port = port
+        ad.options.model = model
         ad.options.pen_pos_up = 60
         ad.options.pen_pos_down = 30
         try:

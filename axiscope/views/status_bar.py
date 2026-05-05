@@ -65,6 +65,7 @@ class StatusBar(QWidget):
         layout.addWidget(self._align_btn)
 
         # Nudge arrows (0.25 in)
+        self._nudge_btns: list[QPushButton] = []
         for arrow, sig, tip in [
             ("\u25B2", self.nudge_up_clicked, "Up 0.25 in"),
             ("\u25BC", self.nudge_down_clicked, "Down 0.25 in"),
@@ -76,6 +77,7 @@ class StatusBar(QWidget):
             btn.setToolTip(tip)
             btn.clicked.connect(sig)
             layout.addWidget(btn)
+            self._nudge_btns.append(btn)
 
         self._plot_btn = QPushButton("\u25b6 PLOT")
         self._plot_btn.setStyleSheet(
@@ -119,6 +121,11 @@ class StatusBar(QWidget):
 
     def set_pen_state(self, raised: bool) -> None:
         self._pen_btn.setText("\u25be Lower Pen" if raised else "\u25b4 Raise Pen")
+
+    def set_device_controls_enabled(self, enabled: bool) -> None:
+        for btn in [self._motor_btn, self._pen_btn, self._home_btn, self._align_btn,
+                    *self._nudge_btns]:
+            btn.setEnabled(enabled)
 
     def set_plotting(self, active: bool, paused: bool = False) -> None:
         self._plot_btn.setVisible(not active)

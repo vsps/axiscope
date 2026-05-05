@@ -39,6 +39,9 @@ class PlotSettings:
     grid_spacing_mm: float = 10.0
     anti_aliasing: bool = True
 
+    # Device
+    axidraw_model: int = 5  # 1=V2/V3, 2=V3/A3, 3=V3XLX, 4=Mini, 5=SE/A1, 6=SE/A2, 7=V3/B6
+
 
 class SettingsModel(QObject):
     """Observable settings container.  Emits changed on any mutation

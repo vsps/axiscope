@@ -446,14 +446,17 @@ class MainWindow(QMainWindow):
 
     def _on_plot_started(self) -> None:
         self._status_bar.set_plotting(True)
+        self._status_bar.set_device_controls_enabled(False)
         self._status_bar.set_status_text("Plotting…")
 
     def _on_plot_finished(self) -> None:
         self._status_bar.set_plotting(False)
+        self._status_bar.set_device_controls_enabled(True)
         self._status_bar.set_status_text("Plot complete")
 
     def _on_plot_error(self, msg: str) -> None:
         self._status_bar.set_plotting(False)
+        self._status_bar.set_device_controls_enabled(True)
         self._status_bar.set_status_text(f"Plot error: {msg}")
 
     # =================================================================

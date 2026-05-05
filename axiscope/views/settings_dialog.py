@@ -69,15 +69,41 @@ class _LabelledSlider(QWidget):
 # -- Tab pages --------------------------------------------------------
 
 
+_MODEL_OPTIONS = [
+    ("AxiDraw V2 / V3 / SE/A4",  1),
+    ("AxiDraw V3/A3 or SE/A3",   2),
+    ("AxiDraw V3 XLX",           3),
+    ("AxiDraw MiniKit",          4),
+    ("AxiDraw SE/A1",            5),
+    ("AxiDraw SE/A2",            6),
+    ("AxiDraw V3/B6",            7),
+]
+
+
 class _DeviceTab(QWidget):
     """Device detection and connection."""
 
-    def __init__(self, device_model: DeviceModel, parent=None):
+    def __init__(self, device_model: DeviceModel, settings_model, parent=None):
         super().__init__(parent)
         self._device = device_model
+        self._settings = settings_model
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
+
+        # Model selector
+        model_row = QHBoxLayout()
+        model_row.addWidget(QLabel("Model:"))
+        self._model_combo = QComboBox()
+        for label, val in _MODEL_OPTIONS:
+            self._model_combo.addItem(label, val)
+        current_model = settings_model.data.axidraw_model
+        idx = next((i for i, (_, v) in enumerate(_MODEL_OPTIONS) if v == current_model), 0)
+        self._model_combo.setCurrentIndex(idx)
+        self._model_combo.currentIndexChanged.connect(self._on_model_changed)
+        model_row.addWidget(self._model_combo)
+        model_row.addStretch()
+        layout.addLayout(model_row)
 
         # Scan row
         scan_row = QHBoxLayout()
@@ -133,6 +159,10 @@ class _DeviceTab(QWidget):
         # Listen for device changes
         self._device.info_changed.connect(self._refresh_info)
 
+    def _on_model_changed(self) -> None:
+        model = self._model_combo.currentData()
+        self._settings.update(axidraw_model=model)
+
     def _on_scan(self) -> None:
         devices = self._device.scan_ports()
         self._device_list.clear()
@@ -147,7 +177,8 @@ class _DeviceTab(QWidget):
     def _on_connect(self) -> None:
         port = self._device_list.currentData()
         if port:
-            ok = self._device.connect(port)
+            model = self._model_combo.currentData()
+            ok = self._device.connect(port, model)
             if ok:
                 self._connect_btn.setEnabled(False)
                 self._disconnect_btn.setEnabled(True)
@@ -156,7 +187,8 @@ class _DeviceTab(QWidget):
     def _on_manual_connect(self) -> None:
         port = self._port_edit.text().strip()
         if port:
-            ok = self._device.connect(port)
+            model = self._model_combo.currentData()
+            ok = self._device.connect(port, model)
             if ok:
                 self._connect_btn.setEnabled(False)
                 self._disconnect_btn.setEnabled(True)
@@ -368,7 +400,7 @@ class SettingsDialog(QDialog):
 
         # Tab widget
         self._tabs = QTabWidget()
-        self._device_tab = _DeviceTab(device_model)
+        self._device_tab = _DeviceTab(device_model, settings_model)
         self._pen_tab = _PenTab(self._data)
         self._plot_tab = _PlotTab(self._data)
         self._canvas_tab = _CanvasTab(self._data)
