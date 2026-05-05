@@ -118,7 +118,7 @@ class StatusBar(QWidget):
             self._pos_label.setText("X/Y: (---, ---)")
 
     def set_pen_state(self, raised: bool) -> None:
-        self._pen_btn.setText("\u25b4 Raise Pen" if raised else "\u25be Lower Pen")
+        self._pen_btn.setText("\u25be Lower Pen" if raised else "\u25b4 Raise Pen")
 
     def set_plotting(self, active: bool, paused: bool = False) -> None:
         self._plot_btn.setVisible(not active)

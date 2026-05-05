@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         self._active_tool: BaseTool | None = None
         self._svg_paths: list[QPainterPath] = []
 
+        self._settings.load()
         self._on_paper_changed("A1")
         self._setup_shortcuts()
         self._apply_theme()
@@ -459,6 +460,8 @@ class MainWindow(QMainWindow):
             self._status_bar.set_connected(True, self._device.port, self._device.model)
             self._status_bar.set_motor_state(False)
             self._status_bar.set_pen_state(True)
+            d = self._settings.data
+            self._device.update_pen_settings(d.pen_up_height, d.pen_down_height)
         else:
             self._status_bar.set_connected(False)
             self._status_bar.set_motor_state(False)
@@ -468,8 +471,14 @@ class MainWindow(QMainWindow):
             self._device.connected, self._device.port, self._device.model
         )
 
+    def closeEvent(self, event) -> None:
+        self._settings.save()
+        super().closeEvent(event)
+
     def _on_settings_changed(self) -> None:
-        self._canvas.set_antialiasing(self._settings.data.anti_aliasing)
+        d = self._settings.data
+        self._canvas.set_antialiasing(d.anti_aliasing)
+        self._device.update_pen_settings(d.pen_up_height, d.pen_down_height)
 
     # =================================================================
     def _apply_theme(self) -> None:

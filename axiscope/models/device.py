@@ -186,6 +186,14 @@ class DeviceModel(QObject):
         self._pen_raised = True
         print(f"[DeviceModel] nudged to ({self._x:.1f}, {self._y:.1f})")
 
+    def update_pen_settings(self, up_pct: float, down_pct: float) -> None:
+        """Push new pen heights to the device servo without moving it."""
+        if self._ad is None:
+            return
+        self._ad.options.pen_pos_up = int(up_pct)
+        self._ad.options.pen_pos_down = int(down_pct)
+        self._ad.pen.servo_init(self._ad)
+
     def plot_polyline(self, vertices: list[list[float]]) -> None:
         """Plot a polyline: moveto first point, pen down, trace, pen up."""
         if self._ad is not None:

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
+
+_SETTINGS_FILE = Path.home() / ".axiscope" / "settings.json"
 
 
 @dataclass
@@ -57,6 +61,24 @@ class SettingsModel(QObject):
             if hasattr(self._data, key):
                 setattr(self._data, key, value)
         self.changed.emit()
+
+    def save(self) -> None:
+        try:
+            _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _SETTINGS_FILE.write_text(json.dumps(asdict(self._data), indent=2))
+        except Exception as exc:
+            print(f"[Settings] save failed: {exc}")
+
+    def load(self) -> None:
+        if not _SETTINGS_FILE.exists():
+            return
+        try:
+            raw = json.loads(_SETTINGS_FILE.read_text())
+            for k, v in raw.items():
+                if hasattr(self._data, k):
+                    setattr(self._data, k, v)
+        except Exception as exc:
+            print(f"[Settings] load failed: {exc}")
 
     def reset_defaults(self) -> None:
         self._data = PlotSettings()
