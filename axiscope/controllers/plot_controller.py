@@ -54,14 +54,17 @@ class _PlotWorker(QObject):
                 if self._abort_check():
                     break
                 for poly in path.toSubpathPolygons(QTransform()):
+                    if self._abort_check():
+                        break
                     if len(poly) < 2:
                         continue
                     vertices = [
                         [pt.x() + w_half, pt.y() + h_half] for pt in poly
                     ]
-                    completed = self._device.plot_path(vertices, self._abort_check)
-                    if not completed:
-                        return
+                    # draw_path pipelines commands to EBB FIFO — fast.
+                    # interrupt_motion() sets plot_status.stopped which
+                    # plot_polyline() checks between every vertex internally.
+                    self._device.plot_polyline(vertices)
         except Exception as exc:
             self.error.emit(str(exc))
         finally:
@@ -91,6 +94,7 @@ class PlotController(QObject):
         self._abort_flag[0] = True
         if self._worker is not None:
             self._worker._pause_event.set()  # unblock if paused so thread can exit
+        self._device.interrupt_motion()      # stops current draw_path at next vertex
 
     def pause(self) -> None:
         if self._worker is not None:
@@ -102,6 +106,7 @@ class PlotController(QObject):
             return
         self._busy = True
         self._abort_flag = [False]
+        self._device.reset_plot_status()
         self.plot_started.emit()
 
         self._worker = _PlotWorker(self._device, paths, paper, self._abort_flag)
